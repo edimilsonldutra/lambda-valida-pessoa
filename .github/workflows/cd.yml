@@ -1,0 +1,60 @@
+name: CD - Deploy to AWS
+
+on:
+  push:
+    branches:
+      - 'develop'
+      - 'main'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+
+    environment:
+      name: ${{ github.ref_name }}
+      url: ${{ steps.deploy-infra.outputs.api_url }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-deploy-role # Substitua pelo seu Role ARN
+        aws-region: us-east-1 # Substitua pela sua região
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Build Lambda Package
+      run: mvn -B package -DskipTests -f LambdaValidaPessoa/pom.xml
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.2.0
+
+    - name: Deploy Infrastructure
+      id: deploy-infra
+      run: |
+        cd infra/terraform
+        terraform init
+        terraform apply -auto-approve -var="environment=${{ github.ref_name }}"
+        echo "api_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+      working-directory: ./
+
+    - name: Deploy Lambda Function
+      run: |
+        FUNCTION_NAME=$(aws cloudformation describe-stack-resource --stack-name valida-pessoa-stack-${{ github.ref_name }} --logical-resource-id LambdaFunction --query "StackResourceDetail.PhysicalResourceId" --output text)
+        aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://LambdaValidaPessoa/target/ValidaPessoa-1.0.jar
+

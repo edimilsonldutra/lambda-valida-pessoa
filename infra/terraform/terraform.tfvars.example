@@ -1,0 +1,65 @@
+# AWS Region
+aws_region = "us-east-1"
+
+# Environment
+environment = "dev"
+
+# Project
+project_name = "valida-pessoa"
+
+# JWT Configuration
+jwt_secret        = "your-secret-key-minimum-32-characters-long-change-this"
+jwt_expiration_ms = 3600000
+
+# Lambda Configuration
+lambda_timeout     = 30
+lambda_memory_size = 512
+lambda_jar_path    = "../../LambdaValidaPessoa/target/ValidaPessoa-1.0.jar"
+
+# VPC Configuration
+vpc_cidr             = "10.0.0.0/16"
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
+enable_nat_gateway   = true
+enable_vpc_endpoints = true
+
+# RDS Configuration
+db_instance_class      = "db.t4g.micro"
+db_allocated_storage   = 20
+db_engine_version      = "16.3"
+db_name                = "valida_pessoa"
+db_username            = "postgres"
+db_password            = "CHANGE_THIS_PASSWORD_STRONG_PASSWORD_HERE"
+db_multi_az            = false
+db_backup_retention    = 7
+db_deletion_protection = false
+db_skip_final_snapshot = true
+
+# Database Schema
+db_secret_name = "valida-pessoa-db-credentials"
+db_schema      = "public"
+db_table       = "pessoas"
+
+# CloudWatch
+log_retention_days = 14
+
+# API Gateway
+api_throttle_burst_limit = 5000
+api_throttle_rate_limit  = 10000
+
+# Alarms
+enable_alarms                              = true
+lambda_error_threshold                     = 5
+lambda_duration_alarm_threshold_percentage = 80
+alarm_evaluation_periods                   = 2
+
+# Feature Flags
+enable_xray_tracing = false
+enable_cors         = true
+
+# Tags
+additional_tags = {
+  Team = "FIAP"
+  Cost_Center = "Engineering"
+}
+
