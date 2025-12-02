@@ -73,12 +73,12 @@ resource "aws_db_instance" "postgres" {
 
   # Backup
   backup_retention_period = var.db_backup_retention
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "mon:04:00-mon:05:00"
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "mon:04:00-mon:05:00"
 
   # Protection
-  deletion_protection = var.db_deletion_protection
-  skip_final_snapshot = var.db_skip_final_snapshot
+  deletion_protection       = var.db_deletion_protection
+  skip_final_snapshot       = var.db_skip_final_snapshot
   final_snapshot_identifier = var.db_skip_final_snapshot ? null : "${local.name_prefix}-postgres-final-snapshot"
 
   # Monitoring
