@@ -1,0 +1,38 @@
+# Git
+!README.md
+*.md
+# Documentation (não precisa no container)
+
+temp/
+tmp/
+# Temp
+
+*.log
+# Logs
+
+Thumbs.db
+.DS_Store
+# OS
+
+*.swo
+*.swp
+*.iml
+.vscode
+.idea
+# IDE
+
+**/target
+LambdaValidaPessoa/.mvn
+LambdaValidaPessoa/target
+# Maven
+
+infra/terraform/.terraform.tfstate.lock.info
+infra/terraform/terraform.tfstate*
+infra/terraform/tfplan
+infra/terraform/.terraform.lock.hcl
+infra/terraform/.terraform
+# Terraform
+
+.gitignore
+.git
+

@@ -1,0 +1,584 @@
+{
+  "name": "ValidaPessoa Lambda - Complete Dashboard",
+  "description": "Comprehensive monitoring dashboard for ValidaPessoa authentication service",
+  "permissions": "PUBLIC_READ_WRITE",
+  "pages": [
+    {
+      "name": "Overview",
+      "description": "High-level metrics and KPIs",
+      "widgets": [
+        {
+          "title": "Request Rate (RPM)",
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT rate(count(*), 1 minute) as 'Requests/min' FROM Transaction WHERE appName = 'ValidaPessoa Lambda' TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Average Response Time",
+          "layout": {
+            "column": 5,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT average(duration) as 'Avg Response Time (ms)' FROM Transaction WHERE appName = 'ValidaPessoa Lambda' TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Error Rate (%)",
+          "layout": {
+            "column": 9,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT percentage(count(*), WHERE error IS true) as 'Error Rate' FROM Transaction WHERE appName = 'ValidaPessoa Lambda'"
+              }
+            ],
+            "thresholds": [
+              {
+                "alertSeverity": "CRITICAL",
+                "value": 5
+              },
+              {
+                "alertSeverity": "WARNING",
+                "value": 2
+              }
+            ]
+          }
+        },
+        {
+          "title": "Success vs Failure",
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.pie"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT count(*) FROM Transaction WHERE appName = 'ValidaPessoa Lambda' FACET CASES(WHERE error IS false AS 'Success', WHERE error IS true AS 'Failure')"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Response Time Percentiles",
+          "layout": {
+            "column": 5,
+            "row": 4,
+            "width": 8,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT percentile(duration, 50, 75, 95, 99) FROM Transaction WHERE appName = 'ValidaPessoa Lambda' TIMESERIES AUTO"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Performance",
+      "description": "Detailed performance metrics",
+      "widgets": [
+        {
+          "title": "CPF Validation Time",
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT average(newrelic.timeslice.value) as 'Avg Time (ms)' FROM Metric WHERE metricTimesliceName = 'Custom/CPF/Validation/Duration' AND appName = 'ValidaPessoa Lambda' TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Database Query Time",
+          "layout": {
+            "column": 5,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT average(newrelic.timeslice.value) as 'Avg Time (ms)' FROM Metric WHERE metricTimesliceName = 'Custom/Database/Query/Duration' AND appName = 'ValidaPessoa Lambda' TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "JWT Generation Time",
+          "layout": {
+            "column": 9,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT average(newrelic.timeslice.value) as 'Avg Time (ms)' FROM Metric WHERE metricTimesliceName = 'Custom/JWT/Generation/Duration' AND appName = 'ValidaPessoa Lambda' TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Operation Breakdown",
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT average(duration) FROM Span WHERE appName = 'ValidaPessoa Lambda' FACET name LIMIT 10"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Slowest Transactions",
+          "layout": {
+            "column": 7,
+            "row": 4,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.table"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT timestamp, duration, error FROM Transaction WHERE appName = 'ValidaPessoa Lambda' ORDER BY duration DESC LIMIT 20"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Resources",
+      "description": "CPU, Memory, and resource utilization",
+      "widgets": [
+        {
+          "title": "Memory Usage (%)",
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT average(newrelic.timeslice.value) as 'Memory Usage %' FROM Metric WHERE metricTimesliceName = 'Custom/JVM/Memory/UsagePercent' AND appName = 'ValidaPessoa Lambda' TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Memory Usage (MB)",
+          "layout": {
+            "column": 7,
+            "row": 1,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.area"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT average(newrelic.timeslice.value) as 'Used', average(newrelic.timeslice.value) as 'Free' FROM Metric WHERE metricTimesliceName IN ('Custom/JVM/Memory/Used/MB', 'Custom/JVM/Memory/Free/MB') AND appName = 'ValidaPessoa Lambda' FACET metricTimesliceName TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "CPU Load Average",
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT average(newrelic.timeslice.value) as 'CPU Load' FROM Metric WHERE metricTimesliceName = 'Custom/JVM/CPU/LoadAverage' AND appName = 'ValidaPessoa Lambda' TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Current Resource Status",
+          "layout": {
+            "column": 7,
+            "row": 4,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT latest(newrelic.timeslice.value) as 'Memory %', latest(newrelic.timeslice.value) as 'CPU Load' FROM Metric WHERE metricTimesliceName IN ('Custom/JVM/Memory/UsagePercent', 'Custom/JVM/CPU/LoadAverage') AND appName = 'ValidaPessoa Lambda' FACET metricTimesliceName"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Errors",
+      "description": "Error tracking and analysis",
+      "widgets": [
+        {
+          "title": "Error Count Over Time",
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 12,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT count(*) FROM TransactionError WHERE appName = 'ValidaPessoa Lambda' TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Top Errors by Type",
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT count(*) FROM TransactionError WHERE appName = 'ValidaPessoa Lambda' FACET error.class LIMIT 10"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Recent Errors",
+          "layout": {
+            "column": 7,
+            "row": 4,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.table"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT timestamp, error.class, error.message FROM TransactionError WHERE appName = 'ValidaPessoa Lambda' ORDER BY timestamp DESC LIMIT 20"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Error Categories",
+          "layout": {
+            "column": 1,
+            "row": 7,
+            "width": 12,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.table"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT count(*) as 'Count', latest(error.message) as 'Latest Message' FROM TransactionError WHERE appName = 'ValidaPessoa Lambda' FACET error.class SINCE 1 day ago"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Business Metrics",
+      "description": "Business KPIs and authentication metrics",
+      "widgets": [
+        {
+          "title": "Authentication Success Rate",
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT percentage(count(*), WHERE error IS false) as 'Success Rate %' FROM Transaction WHERE appName = 'ValidaPessoa Lambda'"
+              }
+            ],
+            "thresholds": [
+              {
+                "alertSeverity": "CRITICAL",
+                "value": 95
+              },
+              {
+                "alertSeverity": "WARNING",
+                "value": 98
+              }
+            ]
+          }
+        },
+        {
+          "title": "CPF Validation Success vs Failure",
+          "layout": {
+            "column": 5,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.pie"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT sum(newrelic.timeslice.value) FROM Metric WHERE metricTimesliceName IN ('Custom/CPF/Validation/Success', 'Custom/CPF/Validation/Failure') FACET metricTimesliceName"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Customer Status Distribution",
+          "layout": {
+            "column": 9,
+            "row": 1,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT sum(newrelic.timeslice.value) as 'Count' FROM Metric WHERE metricTimesliceName IN ('Custom/Customer/NotFound', 'Custom/Customer/Inactive') FACET metricTimesliceName"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Authentication Trend",
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 12,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.area"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT count(*) FROM Transaction WHERE appName = 'ValidaPessoa Lambda' FACET CASES(WHERE error IS false AS 'Success', WHERE error IS true AS 'Failure') TIMESERIES AUTO"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Logs",
+      "description": "Structured log analysis",
+      "widgets": [
+        {
+          "title": "Log Events Over Time",
+          "layout": {
+            "column": 1,
+            "row": 1,
+            "width": 12,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT count(*) FROM Log WHERE service = 'ValidaPessoa' FACET level TIMESERIES AUTO"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Recent Logs",
+          "layout": {
+            "column": 1,
+            "row": 4,
+            "width": 12,
+            "height": 4
+          },
+          "visualization": {
+            "id": "viz.table"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT timestamp, level, event, correlationId, message FROM Log WHERE service = 'ValidaPessoa' ORDER BY timestamp DESC LIMIT 50"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Log Level Distribution",
+          "layout": {
+            "column": 1,
+            "row": 8,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.pie"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT count(*) FROM Log WHERE service = 'ValidaPessoa' FACET level SINCE 1 hour ago"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Top Log Events",
+          "layout": {
+            "column": 7,
+            "row": 8,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "accountId": YOUR_ACCOUNT_ID,
+                "query": "SELECT count(*) FROM Log WHERE service = 'ValidaPessoa' FACET event LIMIT 10"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+

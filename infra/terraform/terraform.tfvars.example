@@ -49,6 +49,20 @@ api_throttle_rate_limit  = 10000
 
 # Alarms
 enable_alarms                              = true
+
+# New Relic Monitoring
+new_relic_license_key        = "YOUR_NEW_RELIC_LICENSE_KEY_HERE"
+new_relic_lambda_layer_arn   = "arn:aws:lambda:us-east-1:451483290750:layer:NewRelicJava21:1"
+enable_new_relic_monitoring  = true
+new_relic_log_level          = "info"
+
+# Alert Notifications
+alert_email_recipients      = "devops@yourcompany.com"
+enable_slack_notifications  = false
+slack_webhook_url           = ""  # Optional: Your Slack webhook URL
+slack_channel               = "#alerts"
+enable_pagerduty            = false
+pagerduty_service_key       = ""  # Optional: PagerDuty integration key
 lambda_error_threshold                     = 5
 lambda_duration_alarm_threshold_percentage = 80
 alarm_evaluation_periods                   = 2

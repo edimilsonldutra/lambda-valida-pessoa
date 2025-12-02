@@ -413,3 +413,37 @@ variable "db_secret_name" {
   type        = string
   default     = "valida-pessoa-db-credentials"
 }
+
+# ============================================================================
+# New Relic Monitoring Configuration
+# ============================================================================
+
+variable "new_relic_license_key" {
+  description = "New Relic license key for APM monitoring"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "new_relic_lambda_layer_arn" {
+  description = "ARN of the New Relic Lambda Layer for Java"
+  type        = string
+  default     = "arn:aws:lambda:us-east-1:451483290750:layer:NewRelicJava21:1"
+}
+
+variable "enable_new_relic_monitoring" {
+  description = "Enable New Relic APM monitoring"
+  type        = bool
+  default     = true
+}
+
+variable "new_relic_log_level" {
+  description = "New Relic agent log level (off, severe, warning, info, fine, finer, finest)"
+  type        = string
+  default     = "info"
+
+  validation {
+    condition     = contains(["off", "severe", "warning", "info", "fine", "finer", "finest"], var.new_relic_log_level)
+    error_message = "New Relic log level must be one of: off, severe, warning, info, fine, finer, finest."
+  }
+}

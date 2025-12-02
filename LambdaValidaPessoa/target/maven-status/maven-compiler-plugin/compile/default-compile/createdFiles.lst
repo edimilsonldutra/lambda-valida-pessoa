@@ -1,8 +1,8 @@
+lambdavalida\monitoring\StructuredLogger.class
 lambdavalida\ValidaPessoaFunction.class
+lambdavalida\monitoring\MetricsCollector.class
 lambdavalida\service\CustomerService.class
-lambdavalida\service\JsonUtils$1.class
 lambdavalida\service\DocumentoValidator.class
-lambdavalida\service\JsonUtils.class
 lambdavalida\model\AuthRequest.class
 lambdavalida\model\AuthResponse.class
 lambdavalida\model\Customer.class

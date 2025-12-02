@@ -12,10 +12,22 @@ Sistema completo de autenticação para validação de CPF de clientes brasileir
 ✅ **API REST** - Endpoint HTTP via API Gateway  
 ✅ **Infraestrutura como Código** - Deploy completo via Terraform  
 ✅ **Serverless** - Zero servidores para gerenciar  
+✅ **Monitoramento Completo** - New Relic APM integrado com métricas, logs e alertas  
 
 ---
 
 ## 📚 Documentação
+
+### 🐳 Deploy com Docker (NOVO - Recomendado!)
+
+| Documento | Descrição |
+|-----------|-----------|
+| 🐳 [DOCKER_README.md](DOCKER_README.md) | Quick start com Docker |
+| 📘 [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) | Guia completo de deploy com Docker |
+
+**Vantagem:** Não precisa instalar Java, Maven, AWS CLI ou Terraform localmente!
+
+### 📖 Documentação Geral
 
 | Documento | Descrição |
 |-----------|-----------|
@@ -24,6 +36,37 @@ Sistema completo de autenticação para validação de CPF de clientes brasileir
 | 💻 [API_EXAMPLES.md](API_EXAMPLES.md) | Exemplos de código em várias linguagens |
 | ⚡ [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | Referência rápida de comandos |
 | 📦 [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) | Resumo completo do projeto |
+
+### 🔧 Configuração de Deploy
+
+| Documento | Descrição |
+|-----------|-----------|
+| ⚙️ [CONFIGURACOES_FALTANTES_DEPLOY.md](CONFIGURACOES_FALTANTES_DEPLOY.md) | Análise de configurações necessárias |
+| ✅ [CHECKLIST_DEPLOY.md](CHECKLIST_DEPLOY.md) | Checklist completo para deploy |
+| 📝 [RESUMO_CONFIGURACOES.md](RESUMO_CONFIGURACOES.md) | Resumo rápido das configurações |
+
+### 🔄 CI/CD
+
+| Documento | Descrição |
+|-----------|-----------|
+| 🚀 [CICD_QUICKSTART.md](CICD_QUICKSTART.md) | Quick start CI/CD (5 min) |
+| 📘 [CICD_DOCUMENTATION.md](CICD_DOCUMENTATION.md) | Documentação completa CI/CD |
+| 📋 [.github/workflows/](/.github/workflows/) | GitHub Actions workflows |
+
+**Plataformas suportadas:**
+- ✅ GitHub Actions (Recomendado)
+- ✅ GitLab CI/CD
+- ✅ Jenkins
+
+### 📊 Monitoramento
+
+| Documento | Descrição |
+|-----------|-----------|
+| 🚀 [QUICK_START_MONITORING.md](QUICK_START_MONITORING.md) | Setup rápido de monitoramento (5 min) |
+| 📊 [NEW_RELIC_MONITORING.md](NEW_RELIC_MONITORING.md) | Guia completo New Relic |
+| 📋 [MONITORING_IMPLEMENTATION_SUMMARY.md](MONITORING_IMPLEMENTATION_SUMMARY.md) | Resumo da implementação |
+| 📈 [newrelic-dashboard.json](newrelic-dashboard.json) | Dashboard pronto para importar |
+| 🔧 [FIXES_AND_FINAL_IMPLEMENTATION.md](FIXES_AND_FINAL_IMPLEMENTATION.md) | Correções e implementação final |
 
 ---
 

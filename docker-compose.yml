@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # Ambiente de Deploy com todas as ferramentas
+  # ============================================================================
+  deploy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lambda-valida-pessoa:latest
+    container_name: lambda-valida-pessoa-deploy
+    working_dir: /workspace
+    volumes:
+      # Montar código-fonte (para edição em tempo real)
+      - ./LambdaValidaPessoa:/workspace/LambdaValidaPessoa
+      - ./infra:/workspace/infra
+      - ./scripts:/workspace/scripts
+
+      # Montar credenciais AWS do host (se existir)
+      - ~/.aws:/root/.aws:ro
+
+      # Persistir estado do Terraform
+      - terraform-state:/workspace/infra/terraform/.terraform
+
+    environment:
+      # AWS Configuration (sobrescreve se passado via .env)
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+
+      # Terraform
+      - TF_IN_AUTOMATION=true
+      - TF_INPUT=false
+
+      # New Relic (opcional)
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
+
+    stdin_open: true
+    tty: true
+    networks:
+      - lambda-network
+
+  # ============================================================================
+  # PostgreSQL local para testes (opcional)
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: lambda-valida-pessoa-db
+    environment:
+      POSTGRES_DB: valida_pessoa
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/migrations.sql:/docker-entrypoint-initdb.d/01-migrations.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lambda-network
+
+  # ============================================================================
+  # LocalStack para simular AWS localmente (opcional)
+  # ============================================================================
+  localstack:
+    image: localstack/localstack:latest
+    container_name: lambda-valida-pessoa-localstack
+    ports:
+      - "4566:4566"            # LocalStack Gateway
+      - "4510-4559:4510-4559"  # External services port range
+    environment:
+      - SERVICES=lambda,apigateway,dynamodb,secretsmanager,cloudwatch,iam
+      - DEBUG=1
+      - LAMBDA_EXECUTOR=docker
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - localstack-data:/tmp/localstack
+    networks:
+      - lambda-network
+
+volumes:
+  terraform-state:
+    driver: local
+  postgres-data:
+    driver: local
+  localstack-data:
+    driver: local
+
+networks:
+  lambda-network:
+    driver: bridge
+
