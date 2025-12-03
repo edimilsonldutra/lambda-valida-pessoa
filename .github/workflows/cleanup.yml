@@ -1,0 +1,243 @@
+name: 🧹 Cleanup Old Artifacts and Caches
+
+on:
+  schedule:
+    # Run every Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+
+jobs:
+  cleanup-artifacts:
+    name: 🗑️ Cleanup Old Artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🗑️ Delete old artifacts
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            // Get all artifacts
+            const artifacts = await github.rest.actions.listArtifactsForRepo({
+              owner,
+              repo,
+              per_page: 100
+            });
+            
+            // Delete artifacts older than 7 days
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            
+            let deletedCount = 0;
+            let totalSize = 0;
+            
+            for (const artifact of artifacts.data.artifacts) {
+              const createdAt = new Date(artifact.created_at);
+              
+              if (createdAt < sevenDaysAgo) {
+                console.log(`Deleting artifact: ${artifact.name} (${artifact.size_in_bytes} bytes)`);
+                
+                await github.rest.actions.deleteArtifact({
+                  owner,
+                  repo,
+                  artifact_id: artifact.id
+                });
+                
+                deletedCount++;
+                totalSize += artifact.size_in_bytes;
+              }
+            }
+            
+            const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
+            console.log(`\n✅ Cleanup complete:`);
+            console.log(`   Deleted artifacts: ${deletedCount}`);
+            console.log(`   Space freed: ${sizeMB} MB`);
+            
+            // Set output for summary
+            core.setOutput('deleted_count', deletedCount);
+            core.setOutput('size_mb', sizeMB);
+
+      - name: 📊 Create Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          # 🧹 Artifact Cleanup Report
+          
+          **Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ## Results
+          - **Artifacts Deleted:** ${{ steps.cleanup.outputs.deleted_count || 0 }}
+          - **Space Freed:** ${{ steps.cleanup.outputs.size_mb || 0 }} MB
+          
+          ## Policy
+          Artifacts older than 7 days are automatically deleted to save storage space.
+          
+          ---
+          ✅ Cleanup completed successfully
+          EOF
+
+  cleanup-caches:
+    name: 🗑️ Cleanup Old Caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🗑️ Delete old caches
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            // Get all caches
+            const caches = await github.rest.actions.getActionsCacheList({
+              owner,
+              repo,
+              per_page: 100
+            });
+            
+            // Delete caches older than 7 days or unused for 3 days
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            
+            const threeDaysAgo = new Date();
+            threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+            
+            let deletedCount = 0;
+            let totalSize = 0;
+            
+            for (const cache of caches.data.actions_caches) {
+              const createdAt = new Date(cache.created_at);
+              const lastAccessedAt = new Date(cache.last_accessed_at);
+              
+              const shouldDelete = 
+                createdAt < sevenDaysAgo || 
+                lastAccessedAt < threeDaysAgo;
+              
+              if (shouldDelete) {
+                console.log(`Deleting cache: ${cache.key} (${cache.size_in_bytes} bytes)`);
+                
+                try {
+                  await github.rest.actions.deleteActionsCacheById({
+                    owner,
+                    repo,
+                    cache_id: cache.id
+                  });
+                  
+                  deletedCount++;
+                  totalSize += cache.size_in_bytes;
+                } catch (error) {
+                  console.log(`Failed to delete cache ${cache.key}: ${error.message}`);
+                }
+              }
+            }
+            
+            const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
+            console.log(`\n✅ Cache cleanup complete:`);
+            console.log(`   Deleted caches: ${deletedCount}`);
+            console.log(`   Space freed: ${sizeMB} MB`);
+
+      - name: 📊 Create Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          # 🧹 Cache Cleanup Report
+          
+          **Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ## Policy
+          - Caches older than 7 days: **Deleted**
+          - Caches unused for 3+ days: **Deleted**
+          - Active caches: **Kept**
+          
+          ---
+          ✅ Cache cleanup completed
+          EOF
+
+  cleanup-old-workflow-runs:
+    name: 🗑️ Cleanup Old Workflow Runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🗑️ Delete old workflow runs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            // Keep runs from last 30 days
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            
+            const workflows = await github.rest.actions.listRepoWorkflows({
+              owner,
+              repo
+            });
+            
+            let deletedCount = 0;
+            
+            for (const workflow of workflows.data.workflows) {
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: workflow.id,
+                per_page: 100
+              });
+              
+              for (const run of runs.data.workflow_runs) {
+                const createdAt = new Date(run.created_at);
+                
+                // Delete old failed/cancelled runs
+                if (createdAt < thirtyDaysAgo && 
+                    (run.status === 'completed') && 
+                    (run.conclusion === 'failure' || run.conclusion === 'cancelled')) {
+                  
+                  console.log(`Deleting old ${run.conclusion} run: ${run.name} from ${run.created_at}`);
+                  
+                  try {
+                    await github.rest.actions.deleteWorkflowRun({
+                      owner,
+                      repo,
+                      run_id: run.id
+                    });
+                    deletedCount++;
+                  } catch (error) {
+                    console.log(`Failed to delete run ${run.id}: ${error.message}`);
+                  }
+                }
+              }
+            }
+            
+            console.log(`\n✅ Deleted ${deletedCount} old workflow runs`);
+
+      - name: 📊 Create Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          # 🧹 Workflow Runs Cleanup Report
+          
+          **Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ## Policy
+          - Failed/Cancelled runs older than 30 days: **Deleted**
+          - Successful runs: **Kept indefinitely**
+          - Recent runs (< 30 days): **Kept**
+          
+          ---
+          ✅ Workflow runs cleanup completed
+          EOF
+

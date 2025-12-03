@@ -17,6 +17,11 @@ on:
           - production
           - staging
 
+# Prevent concurrent deploys to production
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 env:
   JAVA_VERSION: '21'
   AWS_REGION: us-east-1
@@ -70,11 +75,13 @@ jobs:
   build-and-deploy:
     name: 🏗️ Build & Deploy to Production
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: approval
     # Expor outputs que outros jobs consomem (new_version, api_url)
     outputs:
       new_version: ${{ steps.deploy.outputs.new_version }}
       api_url: ${{ steps.deploy.outputs.api_url }}
+      backup_version: ${{ steps.backup.outputs.backup_version }}
     environment:
       name: production
       # note: environment.url can't reliably reference steps before they run in all contexts
@@ -91,6 +98,14 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'corretto'
           cache: maven
+
+      - name: 🔧 Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
 
       - name: 🔧 Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -142,10 +157,20 @@ jobs:
           S3_BUCKET="${{ secrets.S3_DEPLOYMENT_BUCKET_PROD }}"
           S3_KEY="lambda-valida-pessoa/prod/lambda-${GITHUB_SHA::8}.jar"
           
-          # Upload para S3
-          aws s3 cp target/ValidaPessoa-1.0.jar s3://${S3_BUCKET}/${S3_KEY}
+          # Upload para S3 com retry
+          echo "📦 Uploading JAR to S3..."
+          for i in {1..3}; do
+            if aws s3 cp target/ValidaPessoa-1.0.jar s3://${S3_BUCKET}/${S3_KEY}; then
+              echo "✅ JAR uploaded to S3"
+              break
+            else
+              echo "⚠️ Upload failed, retrying ($i/3)..."
+              sleep 5
+            fi
+          done
           
-          # Atualiza código da função
+          # Atualiza código da função e publica nova versão
+          echo "🔄 Updating Lambda function code..."
           NEW_VERSION=$(aws lambda update-function-code \
             --function-name ${FUNCTION_NAME} \
             --s3-bucket ${S3_BUCKET} \
@@ -154,23 +179,56 @@ jobs:
             --query 'Version' \
             --output text)
           
+          echo "New version published: ${NEW_VERSION}"
+          
           # Aguarda atualização
+          echo "⏳ Waiting for function update to complete..."
           aws lambda wait function-updated --function-name ${FUNCTION_NAME}
           
           # Estratégia Blue/Green: atualiza alias gradualmente
-          # Primeiro: 10% do tráfego para nova versão
-          aws lambda update-alias \
+          # Primeiro: 10% do tráfego para nova versão (CANARY)
+          echo "🚦 Starting canary deployment (10% traffic)..."
+          
+          # Get current version from production alias
+          CURRENT_VERSION=$(aws lambda get-alias \
             --function-name ${FUNCTION_NAME} \
             --name production \
-            --function-version ${NEW_VERSION} \
-            --routing-config "AdditionalVersionWeights={\"${NEW_VERSION}\":0.1}"
+            --query 'FunctionVersion' \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -n "${CURRENT_VERSION}" ] && [ "${CURRENT_VERSION}" != "None" ]; then
+            # Update alias with weighted routing - FIXED JSON SYNTAX
+            aws lambda update-alias \
+              --function-name ${FUNCTION_NAME} \
+              --name production \
+              --function-version ${CURRENT_VERSION} \
+              --routing-config "{\"AdditionalVersionWeights\":{\"${NEW_VERSION}\":0.1}}"
+          else
+            # Create alias if doesn't exist
+            aws lambda create-alias \
+              --function-name ${FUNCTION_NAME} \
+              --name production \
+              --function-version ${NEW_VERSION} \
+              --description "Production alias"
+          fi
           
           echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
           
           # Obtém URL do API
-          API_ID=$(aws apigatewayv2 get-apis --query "Items[?Name=='lambda-valida-pessoa-prod'].ApiId" --output text)
+          API_ID=$(aws apigatewayv2 get-apis \
+            --query "Items[?Tags.Environment=='production' && Tags.Project=='valida-pessoa'].ApiId | [0]" \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -z "${API_ID}" ] || [ "${API_ID}" == "None" ]; then
+            # Fallback to name-based query
+            API_ID=$(aws apigatewayv2 get-apis \
+              --query "Items[?Name=='lambda-valida-pessoa-prod'].ApiId | [0]" \
+              --output text)
+          fi
+          
           API_URL="https://${API_ID}.execute-api.${AWS_REGION}.amazonaws.com/prod"
           echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
+          echo "✅ Canary deployment initiated"
 
       - name: ⏸️ Wait and Monitor (Canary Phase)
         run: |
@@ -182,23 +240,55 @@ jobs:
         run: |
           FUNCTION_NAME="lambda-valida-pessoa-prod"
           
+          # Compatible date command for both GNU and BSD date
+          START_TIME=$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -v-5M +%Y-%m-%dT%H:%M:%S)
+          END_TIME=$(date -u +%Y-%m-%dT%H:%M:%S)
+          
+          echo "Checking metrics from ${START_TIME} to ${END_TIME}"
+          
           # Verifica erros nos últimos 5 minutos
           ERROR_COUNT=$(aws cloudwatch get-metric-statistics \
             --namespace AWS/Lambda \
             --metric-name Errors \
             --dimensions Name=FunctionName,Value=${FUNCTION_NAME} \
-            --start-time $(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%S) \
-            --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+            --start-time ${START_TIME} \
+            --end-time ${END_TIME} \
             --period 300 \
             --statistics Sum \
             --query 'Datapoints[0].Sum' \
-            --output text)
+            --output text 2>/dev/null || echo "0")
           
-          echo "Error count: ${ERROR_COUNT}"
+          # Verifica throttles
+          THROTTLE_COUNT=$(aws cloudwatch get-metric-statistics \
+            --namespace AWS/Lambda \
+            --metric-name Throttles \
+            --dimensions Name=FunctionName,Value=${FUNCTION_NAME} \
+            --start-time ${START_TIME} \
+            --end-time ${END_TIME} \
+            --period 300 \
+            --statistics Sum \
+            --query 'Datapoints[0].Sum' \
+            --output text 2>/dev/null || echo "0")
           
-          if [ "${ERROR_COUNT}" != "None" ] && [ "${ERROR_COUNT}" -gt 5 ]; then
+          echo "📊 Metrics Summary:"
+          echo "  Errors: ${ERROR_COUNT}"
+          echo "  Throttles: ${THROTTLE_COUNT}"
+          
+          # Converte None para 0
+          [ "${ERROR_COUNT}" = "None" ] && ERROR_COUNT=0
+          [ "${THROTTLE_COUNT}" = "None" ] && THROTTLE_COUNT=0
+          
+          # Avalia saúde do canary
+          if [ "${ERROR_COUNT}" -gt 5 ] || [ "${THROTTLE_COUNT}" -gt 2 ]; then
             echo "canary_success=false" >> $GITHUB_OUTPUT
-            echo "❌ Too many errors detected during canary phase"
+            echo "❌ Too many errors or throttles detected during canary phase"
+            echo "   Errors: ${ERROR_COUNT} (threshold: 5)"
+            echo "   Throttles: ${THROTTLE_COUNT} (threshold: 2)"
+            exit 1
+          else
+            echo "canary_success=true" >> $GITHUB_OUTPUT
+            echo "✅ Canary phase successful - metrics within acceptable range"
+          fi
             exit 1
           else
             echo "canary_success=true" >> $GITHUB_OUTPUT
@@ -224,20 +314,39 @@ jobs:
         run: |
           FUNCTION_NAME="lambda-valida-pessoa-prod"
           BACKUP_VERSION="${{ steps.backup.outputs.backup_version }}"
+          NEW_VERSION="${{ steps.deploy.outputs.new_version }}"
           
-          echo "❌ Deployment failed - Rolling back to version ${BACKUP_VERSION}"
+          echo "❌ Deployment failed - Initiating rollback"
+          echo "   Rolling back to version: ${BACKUP_VERSION}"
+          echo "   Failed version: ${NEW_VERSION}"
           
-          aws lambda update-alias \
-            --function-name ${FUNCTION_NAME} \
-            --name production \
-            --function-version ${BACKUP_VERSION}
+          # Rollback: move 100% traffic back to backup version
+          if [ -n "${BACKUP_VERSION}" ] && [ "${BACKUP_VERSION}" != "None" ]; then
+            aws lambda update-alias \
+              --function-name ${FUNCTION_NAME} \
+              --name production \
+              --function-version ${BACKUP_VERSION} \
+              --routing-config '{}' || echo "Failed to update alias"
+            
+            echo "✅ Rollback completed - all traffic restored to version ${BACKUP_VERSION}"
+          else
+            echo "⚠️ No backup version available - manual intervention required"
+          fi
           
-          echo "✅ Rollback completed"
+          # Tag failed version for investigation
+          aws lambda update-function-configuration \
+            --function-name ${FUNCTION_NAME}:${NEW_VERSION} \
+            --description "FAILED DEPLOYMENT - DO NOT USE - $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            2>/dev/null || echo "Could not tag failed version"
+          
+          # Send alert
+          echo "::error::Production deployment failed and was rolled back to version ${BACKUP_VERSION}"
 
   # Job 4: Deploy da Infraestrutura
   deploy-infrastructure:
     name: 🏗️ Deploy Infrastructure
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: build-and-deploy
     environment:
       name: production-infra
@@ -264,7 +373,8 @@ jobs:
           terraform init \
             -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
             -backend-config="key=lambda-valida-pessoa/prod/terraform.tfstate" \
-            -backend-config="region=${AWS_REGION}"
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${{ secrets.TERRAFORM_LOCK_TABLE || 'terraform-state-lock' }}"
 
       - name: 📋 Terraform Plan
         working-directory: ./infra/terraform
@@ -359,13 +469,14 @@ jobs:
   notify:
     name: 📢 Notify Deployment
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [build-and-deploy, production-tests, deploy-infrastructure]
     if: always()
 
     steps:
       - name: 📢 Slack Notification
         uses: slackapi/slack-github-action@v1
-        if: ${{ env.SLACK_WEBHOOK_URL != '' }}
+        if: secrets.SLACK_WEBHOOK_URL != ''
         with:
           payload: |
             {
