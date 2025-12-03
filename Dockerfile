@@ -22,15 +22,18 @@ RUN ls -lh target/*.jar
 # ============================================================================
 # Stage 2: Imagem final com todas as ferramentas para deploy
 # ============================================================================
-FROM alpine:3.19
+FROM debian:bookworm-slim
 
 # Metadata
 LABEL maintainer="FIAP"
 LABEL description="Lambda Valida Pessoa - Deploy Environment"
 LABEL version="1.0"
 
+# Evitar prompts interativos
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Instalar ferramentas base
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     bash \
     curl \
     wget \
@@ -38,16 +41,17 @@ RUN apk add --no-cache \
     unzip \
     jq \
     python3 \
-    py3-pip \
+    python3-pip \
     ca-certificates \
-    openssl
+    openssl \
+    gnupg \
+    software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
 
 # ============================================================================
 # Instalar AWS CLI v2
 # ============================================================================
-RUN apk add --no-cache \
-    gcompat \
-    && cd /tmp \
+RUN cd /tmp \
     && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
     && unzip awscliv2.zip \
     && ./aws/install \
@@ -72,7 +76,8 @@ RUN terraform --version
 # ============================================================================
 # Instalar Java 21 (para testes locais, se necessário)
 # ============================================================================
-RUN apk add --no-cache openjdk21-jre
+RUN apt-get update && apt-get install -y openjdk-21-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
 
 # Verificar instalação Java
 RUN java -version
