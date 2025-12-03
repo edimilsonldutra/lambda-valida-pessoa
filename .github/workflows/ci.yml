@@ -11,6 +11,7 @@ on:
       - 'feature/**'
       - 'bugfix/**'
       - 'hotfix/**'
+      - 'test/**'
 
 # Prevent concurrent workflows on same branch
 concurrency:
