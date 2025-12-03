@@ -107,7 +107,7 @@ jobs:
             });
 
       - name: 📢 Notify on Slack
-        if: ${{ steps.check.outputs.sync_needed == 'true' && env.SLACK_WEBHOOK_URL != '' }}
+        if: ${{ steps.check.outputs.sync_needed == 'true' && secrets.SLACK_WEBHOOK_URL != '' }}
         uses: slackapi/slack-github-action@v1
         with:
           payload: |
