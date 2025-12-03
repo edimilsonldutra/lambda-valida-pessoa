@@ -74,14 +74,19 @@ RUN cd /tmp \
 RUN terraform --version
 
 # ============================================================================
-# Instalar Java 21 (para testes locais, se necessário)
+# Instalar Java 21 (necessário para o projeto)
 # ============================================================================
-# Java 21 não está disponível por padrão no Debian Bookworm
-# Instalando Java 17 que é LTS e está disponível nos repositórios oficiais
-RUN apt-get update && apt-get install -y openjdk-17-jre-headless \
+# Java 21 não está nos repos padrão do Debian Bookworm
+# Instalando via Eclipse Adoptium (antigo AdoptOpenJDK) - fonte oficial confiável
+RUN apt-get update && apt-get install -y wget apt-transport-https gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | tee /etc/apt/keyrings/adoptium.asc \
+    && echo "deb [signed-by=/etc/apt/keyrings/adoptium.asc] https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list \
+    && apt-get update \
+    && apt-get install -y temurin-21-jre \
     && rm -rf /var/lib/apt/lists/*
 
-# Verificar instalação Java
+# Verificar instalação Java 21
 RUN java -version
 
 # ============================================================================
