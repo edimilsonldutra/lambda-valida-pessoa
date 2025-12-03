@@ -11,6 +11,11 @@ on:
         required: false
         default: 'false'
 
+# Prevent concurrent deploys to same environment
+concurrency:
+  group: deploy-development
+  cancel-in-progress: false
+
 env:
   JAVA_VERSION: '21'
   AWS_REGION: us-east-1
@@ -18,13 +23,84 @@ env:
   TERRAFORM_VERSION: '1.6.0'
 
 jobs:
-  # Job 1: Build e Deploy da Lambda
+  # Job 1: Deploy da Infraestrutura (Terraform) - DEVE SER PRIMEIRO
+  deploy-infrastructure:
+    name: 🏗️ Deploy Infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: development-infra
+    outputs:
+      lambda_function_name: ${{ steps.terraform-output.outputs.lambda_function_name }}
+      api_gateway_url: ${{ steps.terraform-output.outputs.api_gateway_url }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: 🔧 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 🔍 Terraform Init
+        working-directory: ./infra/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
+            -backend-config="key=lambda-valida-pessoa/dev/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${{ secrets.TERRAFORM_LOCK_TABLE || 'terraform-state-lock' }}"
+
+      - name: 📋 Terraform Plan
+        working-directory: ./infra/terraform
+        run: |
+          terraform plan \
+            -var="environment=development" \
+            -var="aws_region=${AWS_REGION}" \
+            -out=tfplan
+
+      - name: 🚀 Terraform Apply
+        working-directory: ./infra/terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: 📊 Terraform Output
+        id: terraform-output
+        working-directory: ./infra/terraform
+        run: |
+          terraform output -json > terraform-outputs.json
+          
+          # Export outputs for next jobs
+          LAMBDA_NAME=$(terraform output -raw lambda_function_name 2>/dev/null || echo "lambda-valida-pessoa-dev")
+          API_URL=$(terraform output -raw api_gateway_url 2>/dev/null || echo "")
+          
+          echo "lambda_function_name=${LAMBDA_NAME}" >> $GITHUB_OUTPUT
+          echo "api_gateway_url=${API_URL}" >> $GITHUB_OUTPUT
+
+      - name: 💾 Upload Terraform Outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-outputs-dev
+          path: infra/terraform/terraform-outputs.json
+          retention-days: 30
+
+  # Job 2: Build e Deploy da Lambda - DEPOIS da infraestrutura
   build-and-deploy:
     name: 🏗️ Build & Deploy Lambda
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: deploy-infrastructure
     environment:
       name: development
-      url: ${{ steps.deploy.outputs.api_url }}
+      url: ${{ needs.deploy-infrastructure.outputs.api_gateway_url }}
 
     steps:
       - name: 📥 Checkout code
@@ -36,6 +112,14 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'corretto'
           cache: maven
+
+      - name: 🔧 Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
 
       - name: 🔧 Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -57,30 +141,44 @@ jobs:
         id: deploy
         working-directory: ./LambdaValidaPessoa
         run: |
-          # Obtém o nome da função do terraform ou usa default
-          FUNCTION_NAME="lambda-valida-pessoa-dev"
-          
-          # Faz upload do JAR para S3
+          # Usa o nome da função do Terraform output
+          FUNCTION_NAME="${{ needs.deploy-infrastructure.outputs.lambda_function_name }}"
           S3_BUCKET="${{ secrets.S3_DEPLOYMENT_BUCKET_DEV }}"
           S3_KEY="lambda-valida-pessoa/dev/lambda-${GITHUB_SHA::8}.jar"
           
-          aws s3 cp target/ValidaPessoa-1.0.jar s3://${S3_BUCKET}/${S3_KEY}
+          echo "Deploying to function: ${FUNCTION_NAME}"
           
-          # Atualiza o código da Lambda
-          aws lambda update-function-code \
-            --function-name ${FUNCTION_NAME} \
-            --s3-bucket ${S3_BUCKET} \
-            --s3-key ${S3_KEY} \
-            --publish
+          # Upload para S3 com retry
+          for i in {1..3}; do
+            if aws s3 cp target/ValidaPessoa-1.0.jar s3://${S3_BUCKET}/${S3_KEY}; then
+              echo "✅ JAR uploaded to S3"
+              break
+            else
+              echo "⚠️ Upload failed, retrying ($i/3)..."
+              sleep 5
+            fi
+          done
+          
+          # Atualiza código da Lambda com retry
+          for i in {1..3}; do
+            if aws lambda update-function-code \
+              --function-name ${FUNCTION_NAME} \
+              --s3-bucket ${S3_BUCKET} \
+              --s3-key ${S3_KEY} \
+              --publish; then
+              echo "✅ Lambda code updated"
+              break
+            else
+              echo "⚠️ Lambda update failed, retrying ($i/3)..."
+              sleep 10
+            fi
+          done
           
           # Aguarda a atualização completar
-          aws lambda wait function-updated \
-            --function-name ${FUNCTION_NAME}
+          echo "⏳ Waiting for function to be updated..."
+          aws lambda wait function-updated --function-name ${FUNCTION_NAME}
           
-          # Obtém URL do API Gateway
-          API_ID=$(aws apigatewayv2 get-apis --query "Items[?Name=='lambda-valida-pessoa-dev'].ApiId" --output text)
-          API_URL="https://${API_ID}.execute-api.${AWS_REGION}.amazonaws.com/dev"
-          
+          API_URL="${{ needs.deploy-infrastructure.outputs.api_gateway_url }}"
           echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
           echo "✅ Deploy completed successfully!"
           echo "🔗 API URL: ${API_URL}"
@@ -93,66 +191,12 @@ jobs:
           git tag -a $TAG -m "Development deployment $TAG"
           git push origin $TAG
 
-  # Job 2: Deploy da Infraestrutura (Terraform)
-  deploy-infrastructure:
-    name: 🏗️ Deploy Infrastructure
-    runs-on: ubuntu-latest
-    needs: build-and-deploy
-    environment:
-      name: development-infra
-
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
-      - name: 🔧 Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
-
-      - name: 🔧 Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: 🔍 Terraform Init
-        working-directory: ./infra/terraform
-        run: |
-          terraform init \
-            -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
-            -backend-config="key=lambda-valida-pessoa/dev/terraform.tfstate" \
-            -backend-config="region=${AWS_REGION}"
-
-      - name: 📋 Terraform Plan
-        working-directory: ./infra/terraform
-        run: |
-          terraform plan \
-            -var="environment=development" \
-            -var="aws_region=${AWS_REGION}" \
-            -out=tfplan
-
-      - name: 🚀 Terraform Apply
-        working-directory: ./infra/terraform
-        run: terraform apply -auto-approve tfplan
-
-      - name: 📊 Terraform Output
-        working-directory: ./infra/terraform
-        run: terraform output -json > terraform-outputs.json
-
-      - name: 💾 Upload Terraform Outputs
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-outputs-dev
-          path: infra/terraform/terraform-outputs.json
-          retention-days: 30
-
   # Job 3: Testes de Smoke/Sanidade
   smoke-tests:
     name: 🧪 Smoke Tests
     runs-on: ubuntu-latest
-    needs: build-and-deploy
+    timeout-minutes: 10
+    needs: [deploy-infrastructure, build-and-deploy]
 
     steps:
       - name: 📥 Checkout code
@@ -167,7 +211,9 @@ jobs:
 
       - name: 🧪 Test Lambda Function
         run: |
-          FUNCTION_NAME="lambda-valida-pessoa-dev"
+          FUNCTION_NAME="${{ needs.deploy-infrastructure.outputs.lambda_function_name }}"
+          
+          echo "Testing function: ${FUNCTION_NAME}"
           
           # Teste básico de invocação
           aws lambda invoke \
@@ -188,24 +234,25 @@ jobs:
 
       - name: 🔍 Check CloudWatch Logs
         run: |
-          FUNCTION_NAME="lambda-valida-pessoa-dev"
+          FUNCTION_NAME="${{ needs.deploy-infrastructure.outputs.lambda_function_name }}"
           LOG_GROUP="/aws/lambda/${FUNCTION_NAME}"
           
           # Obtém logs recentes
-          aws logs tail ${LOG_GROUP} --since 5m --format short
+          aws logs tail ${LOG_GROUP} --since 5m --format short || echo "No logs available yet"
         continue-on-error: true
 
   # Job 4: Notificação
   notify:
     name: 📢 Notify Deployment
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [build-and-deploy, deploy-infrastructure, smoke-tests]
     if: always()
 
     steps:
       - name: 📢 Slack Notification
         uses: slackapi/slack-github-action@v1
-        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        if: secrets.SLACK_WEBHOOK_URL != ''
         with:
           payload: |
             {
