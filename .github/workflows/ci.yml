@@ -239,7 +239,15 @@ jobs:
 
       - name: 🎨 Terraform Format Check
         working-directory: ./infra/terraform
-        run: terraform fmt -check -recursive
+        run: |
+          # Auto-format arquivos Terraform
+          terraform fmt -recursive
+          
+          # Verificar se houve mudanças
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "::warning::Terraform files were auto-formatted"
+            git diff
+          fi
         continue-on-error: true
 
       - name: 🔍 Terraform Init

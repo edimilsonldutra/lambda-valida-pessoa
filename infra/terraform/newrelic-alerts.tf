@@ -300,7 +300,7 @@ resource "newrelic_alert_channel" "pagerduty" {
 resource "newrelic_alert_policy_channel" "email_channel" {
   count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.alert_email_recipients != "" ? 1 : 0
 
-  policy_id  = newrelic_alert_policy.valida_pessoa_policy[0].id
+  policy_id = newrelic_alert_policy.valida_pessoa_policy[0].id
   channel_ids = [
     newrelic_alert_channel.email[0].id
   ]
@@ -309,7 +309,7 @@ resource "newrelic_alert_policy_channel" "email_channel" {
 resource "newrelic_alert_policy_channel" "slack_channel" {
   count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.enable_slack_notifications ? 1 : 0
 
-  policy_id  = newrelic_alert_policy.valida_pessoa_policy[0].id
+  policy_id = newrelic_alert_policy.valida_pessoa_policy[0].id
   channel_ids = [
     newrelic_alert_channel.slack[0].id
   ]
@@ -318,7 +318,7 @@ resource "newrelic_alert_policy_channel" "slack_channel" {
 resource "newrelic_alert_policy_channel" "pagerduty_channel" {
   count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.environment == "prod" && var.enable_pagerduty ? 1 : 0
 
-  policy_id  = newrelic_alert_policy.valida_pessoa_policy[0].id
+  policy_id = newrelic_alert_policy.valida_pessoa_policy[0].id
   channel_ids = [
     newrelic_alert_channel.pagerduty[0].id
   ]
