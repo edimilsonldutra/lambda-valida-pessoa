@@ -19,10 +19,16 @@ plugin "terraform" {
 }
 
 # Configuração de regras específicas
+
+# Desabilitar terraform_unused_declarations
+# As 14 variáveis não utilizadas são INTENCIONAIS:
+# - Configuração futura (DynamoDB streams, cache, CORS, etc)
+# - Padronização com terraform.tfvars
+# - Documentação de opções disponíveis
+# - Já documentadas no código com comentário explicativo
+# Manter habilitada apenas gera ruído nos logs
 rule "terraform_unused_declarations" {
-  # Manter como warning mas não falhar o pipeline
-  # Essas variáveis estão definidas para uso futuro ou configuração opcional
-  enabled = true
+  enabled = false
 }
 
 rule "terraform_documented_variables" {
