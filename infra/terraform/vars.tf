@@ -425,6 +425,37 @@ variable "new_relic_license_key" {
   default     = ""
 }
 
+variable "new_relic_account_id" {
+  description = "New Relic account ID"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "new_relic_api_key" {
+  description = "New Relic API key for provider authentication"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "new_relic_region" {
+  description = "New Relic region (US or EU)"
+  type        = string
+  default     = "US"
+
+  validation {
+    condition     = contains(["US", "EU"], var.new_relic_region)
+    error_message = "New Relic region must be either US or EU."
+  }
+}
+
+variable "new_relic_app_name" {
+  description = "Application name in New Relic"
+  type        = string
+  default     = "lambda-valida-pessoa"
+}
+
 variable "new_relic_lambda_layer_arn" {
   description = "ARN of the New Relic Lambda Layer for Java"
   type        = string
@@ -446,4 +477,46 @@ variable "new_relic_log_level" {
     condition     = contains(["off", "severe", "warning", "info", "fine", "finer", "finest"], var.new_relic_log_level)
     error_message = "New Relic log level must be one of: off, severe, warning, info, fine, finer, finest."
   }
+}
+
+# ============================================================================
+# Alert Configuration
+# ============================================================================
+
+variable "alert_email_recipients" {
+  description = "Email recipients for alerts (comma-separated)"
+  type        = string
+  default     = ""
+}
+
+variable "enable_slack_notifications" {
+  description = "Enable Slack notifications for alerts"
+  type        = bool
+  default     = false
+}
+
+variable "slack_webhook_url" {
+  description = "Slack webhook URL for notifications"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "slack_channel" {
+  description = "Slack channel for notifications"
+  type        = string
+  default     = "#alerts"
+}
+
+variable "enable_pagerduty" {
+  description = "Enable PagerDuty integration"
+  type        = bool
+  default     = false
+}
+
+variable "pagerduty_service_key" {
+  description = "PagerDuty service integration key"
+  type        = string
+  sensitive   = true
+  default     = ""
 }

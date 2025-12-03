@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    newrelic = {
+      source  = "newrelic/newrelic"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -20,5 +24,12 @@ provider "aws" {
       Owner       = "FIAP"
     }
   }
+}
+
+# New Relic provider - only configure if monitoring is enabled
+provider "newrelic" {
+  account_id = var.new_relic_account_id != "" ? var.new_relic_account_id : null
+  api_key    = var.new_relic_api_key != "" ? var.new_relic_api_key : null
+  region     = var.new_relic_region
 }
 
