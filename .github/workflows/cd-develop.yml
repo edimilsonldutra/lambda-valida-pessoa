@@ -205,7 +205,7 @@ jobs:
     steps:
       - name: 📢 Slack Notification
         uses: slackapi/slack-github-action@v1
-        if: secrets.SLACK_WEBHOOK_URL != ''
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
         with:
           payload: |
             {
@@ -252,4 +252,3 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
         continue-on-error: true
-
