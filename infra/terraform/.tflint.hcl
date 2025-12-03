@@ -53,7 +53,11 @@ rule "terraform_comment_syntax" {
   enabled = true
 }
 
+# Desabilitar terraform_standard_module_structure
+# Esta regra sugere usar variables.tf ao invés de vars.tf
+# No entanto, vars.tf é uma convenção amplamente utilizada e válida
+# Muitos projetos usam vars.tf, outputs.tf, main.tf, etc.
 rule "terraform_standard_module_structure" {
-  enabled = true
+  enabled = false
 }
 
