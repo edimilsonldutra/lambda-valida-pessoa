@@ -76,7 +76,9 @@ RUN terraform --version
 # ============================================================================
 # Instalar Java 21 (para testes locais, se necessário)
 # ============================================================================
-RUN apt-get update && apt-get install -y openjdk-21-jre-headless \
+# Java 21 não está disponível por padrão no Debian Bookworm
+# Instalando Java 17 que é LTS e está disponível nos repositórios oficiais
+RUN apt-get update && apt-get install -y openjdk-17-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
 # Verificar instalação Java
