@@ -71,8 +71,14 @@ jobs:
     name: 🏗️ Build & Deploy to Production
     runs-on: ubuntu-latest
     needs: approval
+    # Expor outputs que outros jobs consomem (new_version, api_url)
+    outputs:
+      new_version: ${{ steps.deploy.outputs.new_version }}
+      api_url: ${{ steps.deploy.outputs.api_url }}
     environment:
       name: production
+      # note: environment.url can't reliably reference steps before they run in all contexts
+      # será preenchido via job output e usado por jobs que precisem: needs.build-and-deploy.outputs.api_url
       url: ${{ steps.deploy.outputs.api_url }}
 
     steps:
@@ -102,17 +108,31 @@ jobs:
         run: |
           FUNCTION_NAME="lambda-valida-pessoa-prod"
           
-          # Obtém versão atual
-          CURRENT_VERSION=$(aws lambda get-function --function-name ${FUNCTION_NAME} --query 'Configuration.Version' --output text)
-          
-          # Cria alias de backup
-          aws lambda create-alias \
-            --function-name ${FUNCTION_NAME} \
-            --name "backup-$(date +%Y%m%d-%H%M%S)" \
-            --function-version ${CURRENT_VERSION} \
-            || true
-          
-          echo "backup_version=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
+          # Tenta obter a versão atual apontada pela alias 'production' (se existir)
+          BACKUP_VERSION=$(aws lambda get-alias --function-name ${FUNCTION_NAME} --name production --query 'FunctionVersion' --output text 2>/dev/null || true)
++
++          # Se não existir alias 'production', tenta obter a última versão publicada (não $LATEST)
++          if [ -z "${BACKUP_VERSION}" ] || [ "${BACKUP_VERSION}" = "None" ]; then
++            BACKUP_VERSION=$(aws lambda list-versions-by-function --function-name ${FUNCTION_NAME} --query 'Versions[?Version!="\$LATEST"][-1].Version' --output text 2>/dev/null || true)
++          fi
++
++          # Se ainda não houver versão publicada (p.ex. função nova), publica uma versão para servir de backup
++          if [ -z "${BACKUP_VERSION}" ] || [ "${BACKUP_VERSION}" = "None" ]; then
++            echo "No published version found - publishing a version to serve as backup"
++            PUBLISHED=$(aws lambda publish-version --function-name ${FUNCTION_NAME} --description "backup-$(date +%Y%m%d-%H%M%S)" --query 'Version' --output text || true)
++            BACKUP_VERSION=${PUBLISHED}
++          fi
++
++          # Cria alias de backup apontando para a versão encontrada (se houver)
++          if [ -n "${BACKUP_VERSION}" ] && [ "${BACKUP_VERSION}" != "None" ]; then
++            aws lambda create-alias \
++              --function-name ${FUNCTION_NAME} \
++              --name "backup-$(date +%Y%m%d-%H%M%S)" \
++              --function-version ${BACKUP_VERSION} \
++              || true
++          fi
++
+          echo "backup_version=${BACKUP_VERSION}" >> $GITHUB_OUTPUT
 
       - name: 🚀 Deploy to Production (Blue/Green)
         id: deploy
@@ -414,4 +434,3 @@ jobs:
           to: ${{ secrets.ALERT_EMAIL }}
           from: GitHub Actions
         continue-on-error: true
-

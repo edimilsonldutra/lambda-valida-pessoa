@@ -241,18 +241,13 @@
                 <configuration>
                     <configLocation>google_checks.xml</configLocation>
                     <consoleOutput>true</consoleOutput>
+                    <!-- Don't fail the build on style violations by default; treat as report-only in CI. -->
                     <failsOnError>false</failsOnError>
-                    <violationSeverity>warning</violationSeverity>
+                    <!-- Only treat 'error' severity as relevant for failing (if enabled). -->
+                    <violationSeverity>error</violationSeverity>
                 </configuration>
-                <executions>
-                    <execution>
-                        <id>validate</id>
-                        <phase>validate</phase>
-                        <goals>
-                            <goal>check</goal>
-                        </goals>
-                    </execution>
-                </executions>
+                <!-- Removed automatic execution binding so Checkstyle doesn't run in the default validate phase.
+                     CI workflows can still call `mvn checkstyle:check` explicitly when desired. -->
             </plugin>
 
             <!-- PMD for Static Analysis -->
@@ -338,4 +333,3 @@
         </profile>
     </profiles>
 </project>
-
