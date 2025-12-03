@@ -252,7 +252,6 @@ jobs:
     steps:
       - name: 📢 Slack Notification
         uses: slackapi/slack-github-action@v1
-        if: secrets.SLACK_WEBHOOK_URL != ''
         with:
           payload: |
             {
