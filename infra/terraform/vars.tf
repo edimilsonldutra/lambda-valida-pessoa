@@ -1,3 +1,19 @@
+# ============================================================================
+# Terraform Variables
+# ============================================================================
+#
+# NOTA: Algumas variáveis declaradas neste arquivo não são utilizadas
+# atualmente nos recursos Terraform, mas são mantidas para:
+#
+# 1. Configuração futura e extensibilidade
+# 2. Padronização com terraform.tfvars
+# 3. Documentação de opções disponíveis
+# 4. Compatibilidade com módulos e workflows externos
+#
+# TFLint irá reportar warnings para variáveis não utilizadas, mas isso
+# é intencional e não representa um problema.
+# ============================================================================
+
 # AWS Region
 variable "aws_region" {
   description = "AWS region where resources will be created"
