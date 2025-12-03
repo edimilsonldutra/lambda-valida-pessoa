@@ -1,0 +1,56 @@
+# Configuração de auto-labeling para PRs
+# Este arquivo é usado pelo workflow pr-validation.yml
+
+# Labels baseados em paths de arquivos alterados
+'type: infrastructure':
+  - 'infra/**/*'
+  - 'terraform/**/*'
+  - '*.tf'
+
+'type: ci/cd':
+  - '.github/workflows/**/*'
+  - '.github/actions/**/*'
+  - 'deploy*.sh'
+  - 'deploy*.bat'
+
+'type: lambda':
+  - 'LambdaValidaPessoa/**/*'
+  - 'src/**/*'
+
+'type: tests':
+  - '**/test/**/*'
+  - '**/*Test.java'
+  - '**/*Spec.java'
+
+'type: documentation':
+  - '**/*.md'
+  - 'docs/**/*'
+  - 'README*'
+
+'type: dependencies':
+  - 'pom.xml'
+  - 'package.json'
+  - 'requirements.txt'
+
+'type: docker':
+  - 'Dockerfile'
+  - 'docker-compose.yml'
+  - '.dockerignore'
+
+'type: config':
+  - '**/*.yaml'
+  - '**/*.yml'
+  - '**/*.json'
+  - '**/*.xml'
+  - '**/*.properties'
+
+'area: monitoring':
+  - '**/monitoring/**/*'
+  - 'newrelic*'
+  - '**/newrelic.yml'
+
+'area: security':
+  - '**/security/**/*'
+  - '**/*Security*'
+  - '**/*Auth*'
+

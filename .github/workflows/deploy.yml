@@ -1,350 +1,343 @@
 name: Deploy Lambda Valida Pessoa
-            }
-              ]
-                }
-                  }
-                    "text": "*Deploy Status*: ${{ needs.deploy.result == 'success' && '✅ Success' || '❌ Failed' }}\n*Environment*: ${{ github.event.inputs.environment || 'dev' }}\n*Commit*: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
-                    "type": "mrkdwn",
-                  "text": {
-                  "type": "section",
-                {
-              "blocks": [
-              "text": "Deploy ${{ needs.deploy.result }} for Lambda Valida Pessoa",
-            {
-          payload: |
-        with:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        env:
-        uses: slackapi/slack-github-action@v1
-        if: env.SLACK_WEBHOOK_URL != ''
-      - name: Send Slack notification
-    steps:
 
-    if: always()
-    needs: deploy
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        default: 'dev'
+        options:
+          - dev
+          - staging
+          - production
+
+env:
+  AWS_REGION: us-east-1
+  TERRAFORM_VERSION: 1.6.0
+  JAVA_VERSION: '21'
+
+jobs:
+  # ============================================================================
+  # Job 1: Build and Test
+  # ============================================================================
+  build-and-test:
+    name: Build and Test
     runs-on: ubuntu-latest
-    name: Notify Team
-  notify:
-  # ============================================================================
-  # Job 5: Notify (opcional)
-  # ============================================================================
 
-          EOF
-          - Run integration tests
-          - Check New Relic dashboard for metrics
-          - Monitor the application in CloudWatch
-          ## Next Steps
-
-          ✅ API endpoint is working correctly
-          ## Test Result
-
-          - **Lambda Function**: ${{ steps.deploy.outputs.lambda_name }}
-          - **API Gateway URL**: ${{ steps.deploy.outputs.api_url }}
-          ## Resources Deployed
-
-          - **Commit**: ${{ github.sha }}
-          - **Region**: ${{ env.AWS_REGION }}
-          - **Environment**: ${{ github.event.inputs.environment || 'dev' }}
-          ## Environment
-
-          # 🚀 Deployment Summary
-          cat >> $GITHUB_STEP_SUMMARY <<EOF
-        run: |
-      - name: Create deployment summary
-
-          fi
-            exit 1
-            echo "❌ API test failed!"
-          else
-            echo "✅ API is working!"
-          if echo "$RESPONSE" | grep -q "token"; then
-          # Verificar se recebeu um token
-
-          echo "Response: $RESPONSE"
-          
-            -d '{"cpf":"11144477735"}')
-            -H "Content-Type: application/json" \
-          RESPONSE=$(curl -s -X POST "$API_URL" \
-          
-          echo "Testing API: $API_URL"
-          API_URL="${{ steps.deploy.outputs.api_url }}"
-        run: |
-      - name: Test API Endpoint
-
-          echo "lambda_name=$(terraform output -raw lambda_function_name)" >> $GITHUB_OUTPUT
-          echo "api_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
-          # Capturar outputs
-          
-          terraform apply -auto-approve tfplan
-          cd infra/terraform
-        run: |
-        id: deploy
-      - name: Terraform Apply
-
-          terraform init
-          cd infra/terraform
-        run: |
-      - name: Terraform Init
-
-          aws-region: ${{ env.AWS_REGION }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        with:
-        uses: aws-actions/configure-aws-credentials@v4
-      - name: Configure AWS Credentials
-
-          terraform_wrapper: false
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
-        with:
-        uses: hashicorp/setup-terraform@v3
-      - name: Setup Terraform
-
-          path: infra/terraform/
-          name: terraform-plan
-        with:
-        uses: actions/download-artifact@v4
-      - name: Download Terraform Plan
-
-          path: LambdaValidaPessoa/target/
-          name: lambda-jar
-        with:
-        uses: actions/download-artifact@v4
-      - name: Download JAR artifact
-
-        uses: actions/checkout@v4
+    steps:
       - name: Checkout code
-    steps:
-    
-      url: ${{ steps.deploy.outputs.api_url }}
-      name: ${{ github.event.inputs.environment || 'dev' }}
-    environment:
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-    needs: [terraform-plan, security-scan]
-    runs-on: ubuntu-latest
-    name: Deploy to AWS
-  deploy:
-  # ============================================================================
-  # Job 4: Deploy to AWS
-  # ============================================================================
+        uses: actions/checkout@v4
 
-          retention-days: 5
-          path: infra/terraform/tfplan
-          name: terraform-plan
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
         with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build with Maven
+        run: |
+          cd LambdaValidaPessoa
+          mvn clean package -DskipTests -B
+
+      - name: Run tests
+        run: |
+          cd LambdaValidaPessoa
+          mvn test -B
+
+      - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
-      - name: Upload Terraform Plan
-
-            })
-              body: output
-              repo: context.repo.repo,
-              owner: context.repo.owner,
-              issue_number: context.issue.number,
-            github.rest.issues.createComment({
-
-            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
-            
-            </details>
-            
-            \`\`\`
-            ${{ steps.plan.outputs.stdout }}
-            \`\`\`terraform
-            
-            <details><summary>Show Plan</summary>
-            
-            const output = `#### Terraform Plan 📋
-          script: |
         with:
-        uses: actions/github-script@v7
-        if: github.event_name == 'pull_request'
-      - name: Comment PR with Terraform Plan
-
-        continue-on-error: true
-          terraform plan -out=tfplan -no-color
-          cd infra/terraform
-        run: |
-        id: plan
-      - name: Terraform Plan
-
-          terraform validate
-          cd infra/terraform
-        run: |
-      - name: Terraform Validate
-
-          terraform fmt -check -recursive
-          cd infra/terraform
-        run: |
-      - name: Terraform Format Check
-
-          terraform init
-          cd infra/terraform
-        run: |
-      - name: Terraform Init
-
-          EOF
-          }
-            Repository = "${{ github.repository }}"
-            ManagedBy  = "GitHub-Actions"
-            Team       = "FIAP"
-          additional_tags = {
-
-          log_retention_days = 14
-          enable_alarms = true
-          
-          alert_email_recipients = "${{ secrets.ALERT_EMAIL }}"
-          
-          enable_new_relic_monitoring = true
-          new_relic_license_key       = "${{ secrets.NEW_RELIC_LICENSE_KEY }}"
-          
-          db_skip_final_snapshot = true
-          db_deletion_protection = false
-          db_backup_retention    = 7
-          db_multi_az            = false
-          db_password            = "${{ secrets.DB_PASSWORD }}"
-          db_username            = "postgres"
-          db_name                = "valida_pessoa"
-          db_engine_version      = "16.3"
-          db_allocated_storage   = 20
-          db_instance_class      = "db.t4g.micro"
-          
-          lambda_jar_path    = "../../LambdaValidaPessoa/target/ValidaPessoa-1.0.jar"
-          lambda_memory_size = 512
-          lambda_timeout     = 30
-          
-          jwt_expiration_ms = 3600000
-          jwt_secret        = "${{ secrets.JWT_SECRET }}"
-          
-          project_name = "valida-pessoa"
-          environment = "${{ github.event.inputs.environment || 'dev' }}"
-          aws_region  = "${{ env.AWS_REGION }}"
-          cat > terraform.tfvars <<EOF
-          cd infra/terraform
-        run: |
-      - name: Create terraform.tfvars
-
-          aws-region: ${{ env.AWS_REGION }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        with:
-        uses: aws-actions/configure-aws-credentials@v4
-      - name: Configure AWS Credentials
-
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
-        with:
-        uses: hashicorp/setup-terraform@v3
-      - name: Setup Terraform
-
-          path: LambdaValidaPessoa/target/
           name: lambda-jar
-        with:
-        uses: actions/download-artifact@v4
-      - name: Download JAR artifact
+          path: LambdaValidaPessoa/target/*.jar
+          retention-days: 5
 
-        uses: actions/checkout@v4
-      - name: Checkout code
-    steps:
-
-      name: ${{ github.event.inputs.environment || 'dev' }}
-    environment:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    name: Terraform Plan
-  terraform-plan:
-  # ============================================================================
-  # Job 3: Terraform Validate and Plan
-  # ============================================================================
-
-          sarif_file: 'trivy-results.sarif'
-        with:
+      - name: Generate test report
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
-      - name: Upload Trivy results to GitHub Security
-
-          output: 'trivy-results.sarif'
-          format: 'sarif'
-          scan-ref: './LambdaValidaPessoa'
-          scan-type: 'fs'
+        uses: dorny/test-reporter@v1
         with:
-        uses: aquasecurity/trivy-action@master
-      - name: Run Trivy vulnerability scanner
+          name: Maven Tests
+          path: LambdaValidaPessoa/target/surefire-reports/*.xml
+          reporter: java-junit
 
-        uses: actions/checkout@v4
-      - name: Checkout code
-    steps:
-
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    name: Security Scan
-  security-scan:
   # ============================================================================
   # Job 2: Security Scan
   # ============================================================================
-
-          reporter: java-junit
-          path: LambdaValidaPessoa/target/surefire-reports/*.xml
-          name: Maven Tests
-        with:
-        uses: dorny/test-reporter@v1
-        if: always()
-      - name: Generate test report
-
-          retention-days: 5
-          path: LambdaValidaPessoa/target/*.jar
-          name: lambda-jar
-        with:
-        uses: actions/upload-artifact@v4
-      - name: Upload JAR artifact
-
-          mvn test -B
-          cd LambdaValidaPessoa
-        run: |
-      - name: Run tests
-
-          mvn clean package -B
-          cd LambdaValidaPessoa
-        run: |
-      - name: Build with Maven
-
-          cache: 'maven'
-          distribution: 'temurin'
-          java-version: '21'
-        with:
-        uses: actions/setup-java@v4
-      - name: Set up JDK 21
-
-        uses: actions/checkout@v4
-      - name: Checkout code
-    steps:
-
+  security-scan:
+    name: Security Scan
     runs-on: ubuntu-latest
-    name: Build and Test
-  build-and-test:
+    needs: build-and-test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './LambdaValidaPessoa'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
   # ============================================================================
-  # Job 1: Build e Test
+  # Job 3: Terraform Validate and Plan
   # ============================================================================
-jobs:
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
 
-  TERRAFORM_VERSION: 1.6.6
-  AWS_REGION: us-east-1
-env:
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-          - prod
-          - staging
-          - dev
-        options:
-        type: choice
-        default: 'dev'
-        required: true
-        description: 'Environment to deploy'
-      environment:
-    inputs:
-  workflow_dispatch:
-      - main
-    branches:
-  pull_request:
-      - develop
-      - main
-    branches:
-  push:
-on:
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-jar
+          path: LambdaValidaPessoa/target/
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create terraform.tfvars
+        run: |
+          cd infra/terraform
+          cat > terraform.tfvars <<EOF
+          aws_region  = "${{ env.AWS_REGION }}"
+          environment = "${{ github.event.inputs.environment || 'dev' }}"
+          project_name = "valida-pessoa"
+          
+          jwt_secret        = "${{ secrets.JWT_SECRET }}"
+          jwt_expiration_ms = 3600000
+          
+          lambda_timeout     = 30
+          lambda_memory_size = 512
+          lambda_jar_path    = "../../LambdaValidaPessoa/target/ValidaPessoa-1.0.jar"
+          
+          db_instance_class      = "db.t4g.micro"
+          db_allocated_storage   = 20
+          db_engine_version      = "16.3"
+          db_name                = "valida_pessoa"
+          db_username            = "postgres"
+          db_password            = "${{ secrets.DB_PASSWORD }}"
+          db_multi_az            = false
+          db_backup_retention    = 7
+          db_deletion_protection = false
+          db_skip_final_snapshot = true
+          
+          new_relic_license_key       = "${{ secrets.NEW_RELIC_LICENSE_KEY }}"
+          enable_new_relic_monitoring = true
+          
+          alert_email_recipients = "${{ secrets.ALERT_EMAIL }}"
+          
+          enable_alarms = true
+          log_retention_days = 14
+          
+          additional_tags = {
+            Team       = "FIAP"
+            ManagedBy  = "GitHub-Actions"
+            Repository = "${{ github.repository }}"
+          }
+          EOF
+
+      - name: Terraform Init
+        run: |
+          cd infra/terraform
+          terraform init
+
+      - name: Terraform Format Check
+        run: |
+          cd infra/terraform
+          terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        run: |
+          cd infra/terraform
+          terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          cd infra/terraform
+          terraform plan -out=tfplan -no-color
+        continue-on-error: true
+
+      - name: Comment PR with Terraform Plan
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `#### Terraform Plan 📋
+            
+            <details><summary>Show Plan</summary>
+            
+            \`\`\`terraform
+            ${{ steps.plan.outputs.stdout }}
+            \`\`\`
+            
+            </details>
+            
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: infra/terraform/tfplan
+          retention-days: 5
+
+  # ============================================================================
+  # Job 4: Deploy to AWS
+  # ============================================================================
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    needs: [terraform-plan, security-scan]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
+      url: ${{ steps.deploy.outputs.api_url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-jar
+          path: LambdaValidaPessoa/target/
+
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan
+          path: infra/terraform/
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: |
+          cd infra/terraform
+          terraform init
+
+      - name: Terraform Apply
+        id: deploy
+        run: |
+          cd infra/terraform
+          terraform apply -auto-approve tfplan
+          
+          # Capturar outputs
+          echo "api_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+          echo "lambda_name=$(terraform output -raw lambda_function_name)" >> $GITHUB_OUTPUT
+
+      - name: Test API Endpoint
+        run: |
+          API_URL="${{ steps.deploy.outputs.api_url }}"
+          echo "Testing API: $API_URL"
+          
+          RESPONSE=$(curl -s -X POST "$API_URL" \
+            -H "Content-Type: application/json" \
+            -d '{"cpf":"11144477735"}')
+          
+          echo "Response: $RESPONSE"
+          
+          # Verificar se recebeu um token
+          if echo "$RESPONSE" | grep -q "token"; then
+            echo "✅ API is working!"
+          else
+            echo "❌ API test failed!"
+            exit 1
+          fi
+
+      - name: Create deployment summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          # 🚀 Deployment Summary
+          ## Environment
+          - **Environment**: ${{ github.event.inputs.environment || 'dev' }}
+          - **Region**: ${{ env.AWS_REGION }}
+          - **Commit**: ${{ github.sha }}
+          ## Resources Deployed
+          - **Lambda Function**: ${{ steps.deploy.outputs.lambda_name }}
+          - **API Gateway URL**: ${{ steps.deploy.outputs.api_url }}
+          ## Test Result
+          ✅ API endpoint is working correctly
+          ## Next Steps
+          - Run integration tests
+          - Check New Relic dashboard for metrics
+          - Monitor the application in CloudWatch
+          EOF
+
+  # ============================================================================
+  # Job 5: Notify (opcional)
+  # ============================================================================
+  notify:
+    name: Notify Team
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always()
+
+    steps:
+      - name: Send Slack notification
+        if: env.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        with:
+          payload: |
+            {
+              "text": "Deploy ${{ needs.deploy.result }} for Lambda Valida Pessoa",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Deploy Status*: ${{ needs.deploy.result == 'success' && '✅ Success' || '❌ Failed' }}\n*Environment*: ${{ github.event.inputs.environment || 'dev' }}\n*Commit*: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+                  }
+                }
+              ]
+            }
 

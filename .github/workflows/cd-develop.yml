@@ -1,0 +1,255 @@
+name: 🚀 CD - Deploy to Development
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip tests (use with caution)'
+        required: false
+        default: 'false'
+
+env:
+  JAVA_VERSION: '21'
+  AWS_REGION: us-east-1
+  ENVIRONMENT: development
+  TERRAFORM_VERSION: '1.6.0'
+
+jobs:
+  # Job 1: Build e Deploy da Lambda
+  build-and-deploy:
+    name: 🏗️ Build & Deploy Lambda
+    runs-on: ubuntu-latest
+    environment:
+      name: development
+      url: ${{ steps.deploy.outputs.api_url }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ☕ Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'corretto'
+          cache: maven
+
+      - name: 🔧 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 🧪 Run Tests
+        if: github.event.inputs.skip_tests != 'true'
+        working-directory: ./LambdaValidaPessoa
+        run: mvn test -B
+
+      - name: 📦 Build Package
+        working-directory: ./LambdaValidaPessoa
+        run: mvn clean package -DskipTests -B
+
+      - name: 🚀 Deploy to AWS Lambda
+        id: deploy
+        working-directory: ./LambdaValidaPessoa
+        run: |
+          # Obtém o nome da função do terraform ou usa default
+          FUNCTION_NAME="lambda-valida-pessoa-dev"
+          
+          # Faz upload do JAR para S3
+          S3_BUCKET="${{ secrets.S3_DEPLOYMENT_BUCKET_DEV }}"
+          S3_KEY="lambda-valida-pessoa/dev/lambda-${GITHUB_SHA::8}.jar"
+          
+          aws s3 cp target/ValidaPessoa-1.0.jar s3://${S3_BUCKET}/${S3_KEY}
+          
+          # Atualiza o código da Lambda
+          aws lambda update-function-code \
+            --function-name ${FUNCTION_NAME} \
+            --s3-bucket ${S3_BUCKET} \
+            --s3-key ${S3_KEY} \
+            --publish
+          
+          # Aguarda a atualização completar
+          aws lambda wait function-updated \
+            --function-name ${FUNCTION_NAME}
+          
+          # Obtém URL do API Gateway
+          API_ID=$(aws apigatewayv2 get-apis --query "Items[?Name=='lambda-valida-pessoa-dev'].ApiId" --output text)
+          API_URL="https://${API_ID}.execute-api.${AWS_REGION}.amazonaws.com/dev"
+          
+          echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
+          echo "✅ Deploy completed successfully!"
+          echo "🔗 API URL: ${API_URL}"
+
+      - name: 🏷️ Tag Deployment
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          TAG="dev-${GITHUB_SHA::8}-$(date +%Y%m%d-%H%M%S)"
+          git tag -a $TAG -m "Development deployment $TAG"
+          git push origin $TAG
+
+  # Job 2: Deploy da Infraestrutura (Terraform)
+  deploy-infrastructure:
+    name: 🏗️ Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: build-and-deploy
+    environment:
+      name: development-infra
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: 🔧 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 🔍 Terraform Init
+        working-directory: ./infra/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
+            -backend-config="key=lambda-valida-pessoa/dev/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}"
+
+      - name: 📋 Terraform Plan
+        working-directory: ./infra/terraform
+        run: |
+          terraform plan \
+            -var="environment=development" \
+            -var="aws_region=${AWS_REGION}" \
+            -out=tfplan
+
+      - name: 🚀 Terraform Apply
+        working-directory: ./infra/terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: 📊 Terraform Output
+        working-directory: ./infra/terraform
+        run: terraform output -json > terraform-outputs.json
+
+      - name: 💾 Upload Terraform Outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-outputs-dev
+          path: infra/terraform/terraform-outputs.json
+          retention-days: 30
+
+  # Job 3: Testes de Smoke/Sanidade
+  smoke-tests:
+    name: 🧪 Smoke Tests
+    runs-on: ubuntu-latest
+    needs: build-and-deploy
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 🧪 Test Lambda Function
+        run: |
+          FUNCTION_NAME="lambda-valida-pessoa-dev"
+          
+          # Teste básico de invocação
+          aws lambda invoke \
+            --function-name ${FUNCTION_NAME} \
+            --payload file://events/event.json \
+            --cli-binary-format raw-in-base64-out \
+            response.json
+          
+          cat response.json
+          
+          # Verifica se há erros
+          if grep -q "errorMessage" response.json; then
+            echo "❌ Lambda returned an error"
+            exit 1
+          fi
+          
+          echo "✅ Smoke test passed!"
+
+      - name: 🔍 Check CloudWatch Logs
+        run: |
+          FUNCTION_NAME="lambda-valida-pessoa-dev"
+          LOG_GROUP="/aws/lambda/${FUNCTION_NAME}"
+          
+          # Obtém logs recentes
+          aws logs tail ${LOG_GROUP} --since 5m --format short
+        continue-on-error: true
+
+  # Job 4: Notificação
+  notify:
+    name: 📢 Notify Deployment
+    runs-on: ubuntu-latest
+    needs: [build-and-deploy, deploy-infrastructure, smoke-tests]
+    if: always()
+
+    steps:
+      - name: 📢 Slack Notification
+        uses: slackapi/slack-github-action@v1
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        with:
+          payload: |
+            {
+              "text": "🚀 Development Deployment ${{ needs.build-and-deploy.result == 'success' && 'Successful' || 'Failed' }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "${{ needs.build-and-deploy.result == 'success' && '✅' || '❌' }} Development Deployment"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Environment:*\nDevelopment"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status:*\n${{ needs.build-and-deploy.result }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n${{ github.sha }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.ref_name }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        continue-on-error: true
+

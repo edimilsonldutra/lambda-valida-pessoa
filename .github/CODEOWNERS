@@ -1,0 +1,49 @@
+# Code Owners for Lambda Valida Pessoa
+#
+# Estes usuários/times serão automaticamente solicitados para review
+# quando arquivos em suas áreas forem modificados.
+#
+# Sintaxe: path/to/file @username @org/team-name
+
+# Default owners (todo o código)
+* @tech-lead
+
+# Lambda Function Code
+/LambdaValidaPessoa/ @backend-team @tech-lead
+/LambdaValidaPessoa/src/main/java/ @backend-team
+/LambdaValidaPessoa/src/test/java/ @backend-team @qa-team
+
+# Infrastructure as Code
+/infra/ @infra-team @devops-team @tech-lead
+/infra/terraform/ @infra-team
+*.tf @infra-team
+*.tfvars @infra-team
+
+# CI/CD Configuration
+/.github/ @devops-team @tech-lead
+/.github/workflows/ @devops-team
+*.yml @devops-team
+
+# Docker
+/Dockerfile @devops-team @infra-team
+/docker-compose.yml @devops-team
+/.dockerignore @devops-team
+
+# Build Configuration
+/LambdaValidaPessoa/pom.xml @backend-team @tech-lead
+
+# Documentation
+/*.md @product-owner @tech-lead
+/docs/ @product-owner
+
+# Security & Monitoring
+/LambdaValidaPessoa/src/main/java/lambdavalida/monitoring/ @sre-team @backend-team
+/newrelic* @sre-team
+**/newrelic.yml @sre-team
+
+# Scripts
+/scripts/ @devops-team
+
+# Templates de eventos
+/events/ @backend-team @qa-team
+

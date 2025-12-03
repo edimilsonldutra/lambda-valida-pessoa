@@ -1,0 +1,417 @@
+name: 🚀 CD - Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  JAVA_VERSION: '21'
+  AWS_REGION: us-east-1
+  TERRAFORM_VERSION: '1.6.0'
+
+jobs:
+  # Job 1: Validação Prévia
+  pre-deployment-checks:
+    name: 🔍 Pre-Deployment Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ☕ Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'corretto'
+          cache: maven
+
+      - name: 🧪 Run All Tests
+        working-directory: ./LambdaValidaPessoa
+        run: mvn clean verify -B
+
+      - name: 📊 Check Test Coverage
+        working-directory: ./LambdaValidaPessoa
+        run: |
+          mvn jacoco:report jacoco:check -B
+        continue-on-error: true
+
+      - name: 🔒 Security Scan
+        working-directory: ./LambdaValidaPessoa
+        run: mvn org.owasp:dependency-check-maven:check -B
+        continue-on-error: true
+
+  # Job 2: Aprovação Manual para Produção
+  approval:
+    name: 👥 Manual Approval Required
+    runs-on: ubuntu-latest
+    needs: pre-deployment-checks
+    environment:
+      name: production-approval
+
+    steps:
+      - name: ✅ Approval Granted
+        run: echo "Deployment to production approved by ${{ github.actor }}"
+
+  # Job 3: Build e Deploy
+  build-and-deploy:
+    name: 🏗️ Build & Deploy to Production
+    runs-on: ubuntu-latest
+    needs: approval
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.api_url }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ☕ Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'corretto'
+          cache: maven
+
+      - name: 🔧 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 📦 Build Package
+        working-directory: ./LambdaValidaPessoa
+        run: mvn clean package -DskipTests -B
+
+      - name: 💾 Backup Current Version
+        id: backup
+        run: |
+          FUNCTION_NAME="lambda-valida-pessoa-prod"
+          
+          # Obtém versão atual
+          CURRENT_VERSION=$(aws lambda get-function --function-name ${FUNCTION_NAME} --query 'Configuration.Version' --output text)
+          
+          # Cria alias de backup
+          aws lambda create-alias \
+            --function-name ${FUNCTION_NAME} \
+            --name "backup-$(date +%Y%m%d-%H%M%S)" \
+            --function-version ${CURRENT_VERSION} \
+            || true
+          
+          echo "backup_version=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: 🚀 Deploy to Production (Blue/Green)
+        id: deploy
+        working-directory: ./LambdaValidaPessoa
+        run: |
+          FUNCTION_NAME="lambda-valida-pessoa-prod"
+          S3_BUCKET="${{ secrets.S3_DEPLOYMENT_BUCKET_PROD }}"
+          S3_KEY="lambda-valida-pessoa/prod/lambda-${GITHUB_SHA::8}.jar"
+          
+          # Upload para S3
+          aws s3 cp target/ValidaPessoa-1.0.jar s3://${S3_BUCKET}/${S3_KEY}
+          
+          # Atualiza código da função
+          NEW_VERSION=$(aws lambda update-function-code \
+            --function-name ${FUNCTION_NAME} \
+            --s3-bucket ${S3_BUCKET} \
+            --s3-key ${S3_KEY} \
+            --publish \
+            --query 'Version' \
+            --output text)
+          
+          # Aguarda atualização
+          aws lambda wait function-updated --function-name ${FUNCTION_NAME}
+          
+          # Estratégia Blue/Green: atualiza alias gradualmente
+          # Primeiro: 10% do tráfego para nova versão
+          aws lambda update-alias \
+            --function-name ${FUNCTION_NAME} \
+            --name production \
+            --function-version ${NEW_VERSION} \
+            --routing-config "AdditionalVersionWeights={\"${NEW_VERSION}\":0.1}"
+          
+          echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          
+          # Obtém URL do API
+          API_ID=$(aws apigatewayv2 get-apis --query "Items[?Name=='lambda-valida-pessoa-prod'].ApiId" --output text)
+          API_URL="https://${API_ID}.execute-api.${AWS_REGION}.amazonaws.com/prod"
+          echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
+
+      - name: ⏸️ Wait and Monitor (Canary Phase)
+        run: |
+          echo "🕒 Monitoring canary deployment (10% traffic) for 5 minutes..."
+          sleep 300
+
+      - name: 📊 Check Canary Metrics
+        id: canary_check
+        run: |
+          FUNCTION_NAME="lambda-valida-pessoa-prod"
+          
+          # Verifica erros nos últimos 5 minutos
+          ERROR_COUNT=$(aws cloudwatch get-metric-statistics \
+            --namespace AWS/Lambda \
+            --metric-name Errors \
+            --dimensions Name=FunctionName,Value=${FUNCTION_NAME} \
+            --start-time $(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%S) \
+            --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+            --period 300 \
+            --statistics Sum \
+            --query 'Datapoints[0].Sum' \
+            --output text)
+          
+          echo "Error count: ${ERROR_COUNT}"
+          
+          if [ "${ERROR_COUNT}" != "None" ] && [ "${ERROR_COUNT}" -gt 5 ]; then
+            echo "canary_success=false" >> $GITHUB_OUTPUT
+            echo "❌ Too many errors detected during canary phase"
+            exit 1
+          else
+            echo "canary_success=true" >> $GITHUB_OUTPUT
+            echo "✅ Canary phase successful"
+          fi
+
+      - name: 🚀 Full Deployment (100% Traffic)
+        if: steps.canary_check.outputs.canary_success == 'true'
+        run: |
+          FUNCTION_NAME="lambda-valida-pessoa-prod"
+          NEW_VERSION="${{ steps.deploy.outputs.new_version }}"
+          
+          # Move 100% do tráfego para nova versão
+          aws lambda update-alias \
+            --function-name ${FUNCTION_NAME} \
+            --name production \
+            --function-version ${NEW_VERSION}
+          
+          echo "✅ Full deployment completed - 100% traffic to version ${NEW_VERSION}"
+
+      - name: 🔄 Rollback on Failure
+        if: failure() && steps.deploy.outputs.new_version != ''
+        run: |
+          FUNCTION_NAME="lambda-valida-pessoa-prod"
+          BACKUP_VERSION="${{ steps.backup.outputs.backup_version }}"
+          
+          echo "❌ Deployment failed - Rolling back to version ${BACKUP_VERSION}"
+          
+          aws lambda update-alias \
+            --function-name ${FUNCTION_NAME} \
+            --name production \
+            --function-version ${BACKUP_VERSION}
+          
+          echo "✅ Rollback completed"
+
+  # Job 4: Deploy da Infraestrutura
+  deploy-infrastructure:
+    name: 🏗️ Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: build-and-deploy
+    environment:
+      name: production-infra
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: 🔧 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 🔍 Terraform Init
+        working-directory: ./infra/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
+            -backend-config="key=lambda-valida-pessoa/prod/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}"
+
+      - name: 📋 Terraform Plan
+        working-directory: ./infra/terraform
+        run: |
+          terraform plan \
+            -var="environment=production" \
+            -var="aws_region=${AWS_REGION}" \
+            -out=tfplan
+
+      - name: 🚀 Terraform Apply
+        working-directory: ./infra/terraform
+        run: terraform apply -auto-approve tfplan
+
+  # Job 5: Testes de Produção
+  production-tests:
+    name: 🧪 Production Tests
+    runs-on: ubuntu-latest
+    needs: build-and-deploy
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 🧪 Health Check
+        run: |
+          API_URL="${{ needs.build-and-deploy.outputs.api_url }}"
+          
+          # Testa endpoint de health
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" ${API_URL}/health)
+          
+          if [ "$RESPONSE" != "200" ]; then
+            echo "❌ Health check failed with status: $RESPONSE"
+            exit 1
+          fi
+          
+          echo "✅ Health check passed"
+
+      - name: 🧪 Smoke Tests
+        run: |
+          FUNCTION_NAME="lambda-valida-pessoa-prod"
+          
+          # Testa com evento válido
+          aws lambda invoke \
+            --function-name ${FUNCTION_NAME}:production \
+            --payload file://events/event.json \
+            --cli-binary-format raw-in-base64-out \
+            response.json
+          
+          cat response.json
+          
+          if grep -q "errorMessage" response.json; then
+            echo "❌ Smoke test failed"
+            exit 1
+          fi
+          
+          echo "✅ Smoke tests passed"
+
+  # Job 6: Criar Release Tag
+  create-release:
+    name: 🏷️ Create Release Tag
+    runs-on: ubuntu-latest
+    needs: [build-and-deploy, production-tests]
+    if: github.event_name == 'push'
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🏷️ Create Release Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Gera versão semântica
+          VERSION=$(date +v%Y.%m.%d)-${GITHUB_SHA::8}
+          
+          git tag -a $VERSION -m "Production release $VERSION"
+          git push origin $VERSION
+          
+          echo "Created release tag: $VERSION"
+
+  # Job 7: Notificação
+  notify:
+    name: 📢 Notify Deployment
+    runs-on: ubuntu-latest
+    needs: [build-and-deploy, production-tests, deploy-infrastructure]
+    if: always()
+
+    steps:
+      - name: 📢 Slack Notification
+        uses: slackapi/slack-github-action@v1
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        with:
+          payload: |
+            {
+              "text": "🚀 Production Deployment ${{ needs.build-and-deploy.result == 'success' && 'Successful' || 'Failed' }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "${{ needs.build-and-deploy.result == 'success' && '✅' || '❌' }} Production Deployment"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Environment:*\nProduction"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status:*\n${{ needs.build-and-deploy.result }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Version:*\n${{ needs.build-and-deploy.outputs.new_version }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Deployed By:*\n${{ github.actor }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        continue-on-error: true
+
+      - name: 📧 Email Notification
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "❌ Production Deployment Failed - ${{ github.repository }}"
+          body: |
+            Production deployment failed!
+            
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Actor: ${{ github.actor }}
+            
+            Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          to: ${{ secrets.ALERT_EMAIL }}
+          from: GitHub Actions
+        continue-on-error: true
+

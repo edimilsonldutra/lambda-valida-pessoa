@@ -1,96 +1,332 @@
-name: Pull Request Validation
+name: 🔄 Pull Request Validation
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
-      - main
       - develop
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  statuses: write
+
+env:
+  JAVA_VERSION: '21'
 
 jobs:
-  # ============================================================================
-  # Validação de código
-  # ============================================================================
-  validate:
-    name: Code Validation
+  # Job 1: Validação de PR
+  pr-validation:
+    name: 📋 PR Validation
     runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
 
     steps:
-      - name: Checkout code
+      - name: 📥 Checkout PR
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Set up JDK 21
+      - name: 🔍 Check PR Title
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+          requireScope: false
+
+      - name: 📝 Check PR Description
+        run: |
+          PR_BODY="${{ github.event.pull_request.body }}"
+          
+          if [ -z "$PR_BODY" ]; then
+            echo "❌ PR description is empty"
+            exit 1
+          fi
+          
+          echo "✅ PR has description"
+
+      - name: 🔍 Check Branch Naming
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          
+          if [[ ! "$BRANCH" =~ ^(feature|bugfix|hotfix|release)/.+ ]]; then
+            echo "❌ Branch name does not follow convention: feature/*, bugfix/*, hotfix/*, release/*"
+            echo "Current branch: $BRANCH"
+            exit 1
+          fi
+          
+          echo "✅ Branch name follows convention"
+
+      - name: 📊 Check PR Size
+        run: |
+          # Obtém número de arquivos alterados
+          FILES_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
+          
+          # Obtém linhas alteradas
+          LINES_CHANGED=$(git diff --shortstat origin/${{ github.base_ref }}...HEAD | grep -oE '[0-9]+ insertion|[0-9]+ deletion' | grep -oE '[0-9]+' | awk '{s+=$1} END {print s}')
+          
+          echo "Files changed: $FILES_CHANGED"
+          echo "Lines changed: $LINES_CHANGED"
+          
+          # Aviso se PR muito grande
+          if [ "$FILES_CHANGED" -gt 20 ] || [ "$LINES_CHANGED" -gt 500 ]; then
+            echo "⚠️ Warning: Large PR detected. Consider breaking it into smaller PRs."
+            echo "::warning::Large PR: $FILES_CHANGED files, $LINES_CHANGED lines changed"
+          fi
+
+  # Job 2: Build e Testes
+  build-and-test:
+    name: 🏗️ Build & Test
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: 📥 Checkout PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: ☕ Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: 'maven'
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'corretto'
+          cache: maven
 
-      - name: Build
-        run: |
-          cd LambdaValidaPessoa
-          mvn clean compile -B
+      - name: 🏗️ Build
+        working-directory: ./LambdaValidaPessoa
+        run: mvn clean compile -B
 
-      - name: Run tests
-        run: |
-          cd LambdaValidaPessoa
-          mvn test -B
+      - name: 🧪 Run Tests
+        working-directory: ./LambdaValidaPessoa
+        run: mvn test -B
 
-      - name: Check code formatting
-        run: |
-          cd LambdaValidaPessoa
-          mvn spotless:check || true
+      - name: 📊 Test Coverage
+        working-directory: ./LambdaValidaPessoa
+        run: mvn jacoco:report -B
 
-      - name: Run static analysis
-        run: |
-          cd LambdaValidaPessoa
-          mvn pmd:check || true
+      - name: 📝 Comment Test Coverage
+        uses: madrapps/jacoco-report@v1.6
+        with:
+          paths: LambdaValidaPessoa/target/site/jacoco/jacoco.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          min-coverage-overall: 70
+          min-coverage-changed-files: 80
+          title: Code Coverage Report
+          update-comment: true
 
-  # ============================================================================
-  # Terraform validation
-  # ============================================================================
-  terraform-check:
-    name: Terraform Check
+  # Job 3: Code Quality
+  code-quality:
+    name: 📊 Code Quality Analysis
     runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
 
     steps:
-      - name: Checkout code
+      - name: 📥 Checkout PR
         uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.6
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Terraform Format Check
-        run: |
-          cd infra/terraform
-          terraform fmt -check -recursive
+      - name: ☕ Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'corretto'
+          cache: maven
 
-      - name: Terraform Init
-        run: |
-          cd infra/terraform
-          terraform init -backend=false
+      - name: 🔍 Run Checkstyle
+        working-directory: ./LambdaValidaPessoa
+        run: mvn checkstyle:check -B
+        continue-on-error: true
 
-      - name: Terraform Validate
-        run: |
-          cd infra/terraform
-          terraform validate
+      - name: 🔍 Run PMD
+        working-directory: ./LambdaValidaPessoa
+        run: mvn pmd:check -B
+        continue-on-error: true
 
-  # ============================================================================
-  # Security scan
-  # ============================================================================
-  security:
-    name: Security Scan
+      - name: 🔍 Run SpotBugs
+        working-directory: ./LambdaValidaPessoa
+        run: mvn spotbugs:check -B
+        continue-on-error: true
+
+  # Job 4: Security Scan
+  security-scan:
+    name: 🔒 Security Scan
     runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
 
     steps:
-      - name: Checkout code
+      - name: 📥 Checkout PR
         uses: actions/checkout@v4
-
-      - name: Run Trivy
-        uses: aquasecurity/trivy-action@master
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          severity: 'CRITICAL,HIGH'
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: ☕ Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'corretto'
+          cache: maven
+
+      - name: 🔒 OWASP Dependency Check
+        working-directory: ./LambdaValidaPessoa
+        run: mvn org.owasp:dependency-check-maven:check -B
+        continue-on-error: true
+
+      - name: 🔍 Snyk Security Scan
+        uses: snyk/actions/maven@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --file=LambdaValidaPessoa/pom.xml
+        continue-on-error: true
+
+  # Job 5: Conflitos
+  check-conflicts:
+    name: 🔀 Check Merge Conflicts
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: 📥 Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔀 Check for merge conflicts
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          
+          if ! git merge-tree $(git merge-base HEAD origin/${{ github.base_ref }}) HEAD origin/${{ github.base_ref }} | grep -q "^changed in both"; then
+            echo "✅ No merge conflicts detected"
+          else
+            echo "❌ Merge conflicts detected"
+            exit 1
+          fi
+
+  # Job 6: Dependabot Auto-Approve
+  dependabot-auto-approve:
+    name: 🤖 Auto-approve Dependabot
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false
+    needs: [build-and-test, security-scan]
+
+    steps:
+      - name: ✅ Auto-approve Dependabot PR
+        uses: hmarr/auto-approve-action@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Job 7: Auto-label
+  auto-label:
+    name: 🏷️ Auto Label
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: 🏷️ Label PR based on files changed
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
+
+      - name: 🏷️ Label PR based on size
+        uses: codelytv/pr-size-labeler@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          xs_label: 'size/xs'
+          xs_max_size: 10
+          s_label: 'size/s'
+          s_max_size: 100
+          m_label: 'size/m'
+          m_max_size: 500
+          l_label: 'size/l'
+          l_max_size: 1000
+          xl_label: 'size/xl'
+
+  # Job 8: Comentário de Status
+  pr-comment:
+    name: 💬 PR Status Comment
+    runs-on: ubuntu-latest
+    needs: [pr-validation, build-and-test, code-quality, security-scan]
+    if: always() && github.event.pull_request.draft == false
+
+    steps:
+      - name: 💬 Create or Update Comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const buildStatus = '${{ needs.build-and-test.result }}';
+            const qualityStatus = '${{ needs.code-quality.result }}';
+            const securityStatus = '${{ needs.security-scan.result }}';
+            const validationStatus = '${{ needs.pr-validation.result }}';
+            
+            const getEmoji = (status) => {
+              switch(status) {
+                case 'success': return '✅';
+                case 'failure': return '❌';
+                case 'cancelled': return '⚠️';
+                default: return '⏳';
+              }
+            };
+            
+            const body = `## 🔍 PR Validation Results
+            
+            | Check | Status |
+            |-------|--------|
+            | PR Validation | ${getEmoji(validationStatus)} ${validationStatus} |
+            | Build & Tests | ${getEmoji(buildStatus)} ${buildStatus} |
+            | Code Quality | ${getEmoji(qualityStatus)} ${qualityStatus} |
+            | Security Scan | ${getEmoji(securityStatus)} ${securityStatus} |
+            
+            ${buildStatus === 'success' && qualityStatus === 'success' && securityStatus === 'success' && validationStatus === 'success' 
+              ? '✅ **All checks passed! This PR is ready for review.**' 
+              : '⚠️ **Some checks failed. Please review the errors above.**'}
+            
+            ---
+            <sub>Last updated: ${new Date().toISOString()}</sub>
+            `;
+            
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('PR Validation Results')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
 
