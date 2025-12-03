@@ -257,10 +257,12 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-pmd-plugin</artifactId>
-                <version>3.21.2</version>
+                <version>3.25.0</version>
                 <configuration>
+                    <targetJdk>21</targetJdk>
                     <failOnViolation>false</failOnViolation>
                     <printFailingErrors>true</printFailingErrors>
+                    <skip>false</skip>
                 </configuration>
                 <executions>
                     <execution>
