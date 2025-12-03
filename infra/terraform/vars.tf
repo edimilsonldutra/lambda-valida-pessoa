@@ -465,7 +465,7 @@ variable "new_relic_lambda_layer_arn" {
 variable "enable_new_relic_monitoring" {
   description = "Enable New Relic APM monitoring"
   type        = bool
-  default     = true
+  default     = false  # Disabled by default - set to true and provide credentials to enable
 }
 
 variable "new_relic_log_level" {

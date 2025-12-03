@@ -28,8 +28,8 @@ provider "aws" {
 
 # New Relic provider - only configure if monitoring is enabled
 provider "newrelic" {
-  account_id = var.new_relic_account_id != "" ? var.new_relic_account_id : null
-  api_key    = var.new_relic_api_key != "" ? var.new_relic_api_key : null
+  account_id = var.new_relic_account_id
+  api_key    = var.new_relic_api_key
   region     = var.new_relic_region
 }
 
