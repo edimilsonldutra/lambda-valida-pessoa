@@ -148,7 +148,7 @@ output "github_secret_s3_deployment_bucket_prod" {
 # Summary output for easy copy-paste
 output "github_actions_setup_summary" {
   description = "Summary of all GitHub Secrets to configure"
-  value = <<-EOT
+  value       = <<-EOT
 
     ========================================
     🔐 GitHub Secrets Configuration
@@ -187,7 +187,7 @@ output "github_actions_setup_summary" {
     terraform output -raw github_secret_aws_secret_access_key_prod
 
   EOT
-  sensitive = false
+  sensitive   = false
 }
 
 # Lambda Security Group (continuing from above)
