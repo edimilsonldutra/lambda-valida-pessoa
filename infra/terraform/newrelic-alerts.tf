@@ -3,7 +3,7 @@
 # Only created when New Relic monitoring is enabled and credentials are provided
 
 resource "newrelic_alert_policy" "valida_pessoa_policy" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" ? 1 : 0
+  count = local.enable_newrelic ? 1 : 0
 
   name                = "ValidaPessoa Lambda - ${var.environment}"
   incident_preference = "PER_POLICY"
@@ -15,7 +15,7 @@ resource "newrelic_alert_policy" "valida_pessoa_policy" {
 
 # High API Latency Alert
 resource "newrelic_nrql_alert_condition" "high_latency" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" ? 1 : 0
+  count = local.enable_newrelic ? 1 : 0
 
   policy_id                    = newrelic_alert_policy.valida_pessoa_policy[0].id
   type                         = "static"
@@ -45,7 +45,7 @@ resource "newrelic_nrql_alert_condition" "high_latency" {
 
 # Slow Database Queries
 resource "newrelic_nrql_alert_condition" "slow_database_queries" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" ? 1 : 0
+  count = local.enable_newrelic ? 1 : 0
 
   policy_id                    = newrelic_alert_policy.valida_pessoa_policy[0].id
   type                         = "static"
@@ -79,7 +79,7 @@ resource "newrelic_nrql_alert_condition" "slow_database_queries" {
 
 # High Error Rate
 resource "newrelic_nrql_alert_condition" "high_error_rate" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" ? 1 : 0
+  count = local.enable_newrelic ? 1 : 0
 
   policy_id                    = newrelic_alert_policy.valida_pessoa_policy[0].id
   type                         = "static"
@@ -109,7 +109,7 @@ resource "newrelic_nrql_alert_condition" "high_error_rate" {
 
 # Processing Failures
 resource "newrelic_nrql_alert_condition" "processing_failures" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" ? 1 : 0
+  count = local.enable_newrelic ? 1 : 0
 
   policy_id                    = newrelic_alert_policy.valida_pessoa_policy[0].id
   type                         = "static"
@@ -143,7 +143,7 @@ resource "newrelic_nrql_alert_condition" "processing_failures" {
 
 # High Memory Usage
 resource "newrelic_nrql_alert_condition" "high_memory_usage" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" ? 1 : 0
+  count = local.enable_newrelic ? 1 : 0
 
   policy_id                    = newrelic_alert_policy.valida_pessoa_policy[0].id
   type                         = "static"
@@ -173,7 +173,7 @@ resource "newrelic_nrql_alert_condition" "high_memory_usage" {
 
 # CPU Load Average
 resource "newrelic_nrql_alert_condition" "high_cpu_load" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" ? 1 : 0
+  count = local.enable_newrelic ? 1 : 0
 
   policy_id                    = newrelic_alert_policy.valida_pessoa_policy[0].id
   type                         = "static"
@@ -207,7 +207,7 @@ resource "newrelic_nrql_alert_condition" "high_cpu_load" {
 
 # Low Throughput (Possible Downtime)
 resource "newrelic_nrql_alert_condition" "low_throughput" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" ? 1 : 0
+  count = local.enable_newrelic ? 1 : 0
 
   policy_id                    = newrelic_alert_policy.valida_pessoa_policy[0].id
   type                         = "static"
@@ -230,7 +230,7 @@ resource "newrelic_nrql_alert_condition" "low_throughput" {
 
 # Lambda Timeouts
 resource "newrelic_nrql_alert_condition" "lambda_timeouts" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" ? 1 : 0
+  count = local.enable_newrelic ? 1 : 0
 
   policy_id                    = newrelic_alert_policy.valida_pessoa_policy[0].id
   type                         = "static"
@@ -257,7 +257,7 @@ resource "newrelic_nrql_alert_condition" "lambda_timeouts" {
 
 # Email Notification Destination
 resource "newrelic_notification_destination" "email" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.alert_email_recipients != "" ? 1 : 0
+  count = local.enable_newrelic && var.alert_email_recipients != "" ? 1 : 0
 
   name = "Email - ValidaPessoa ${var.environment}"
   type = "EMAIL"
@@ -270,7 +270,7 @@ resource "newrelic_notification_destination" "email" {
 
 # Slack Notification Destination
 resource "newrelic_notification_destination" "slack" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.enable_slack_notifications ? 1 : 0
+  count = local.enable_newrelic && var.enable_slack_notifications ? 1 : 0
 
   name = "Slack - ValidaPessoa ${var.environment}"
   type = "SLACK"
@@ -283,7 +283,7 @@ resource "newrelic_notification_destination" "slack" {
 
 # PagerDuty Notification Destination
 resource "newrelic_notification_destination" "pagerduty" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.environment == "prod" && var.enable_pagerduty ? 1 : 0
+  count = local.enable_newrelic && var.environment == "prod" && var.enable_pagerduty ? 1 : 0
 
   name = "PagerDuty - ValidaPessoa Production"
   type = "PAGERDUTY_SERVICE_INTEGRATION"
@@ -305,7 +305,7 @@ resource "newrelic_notification_destination" "pagerduty" {
 
 # Email Notification Channel
 resource "newrelic_notification_channel" "email" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.alert_email_recipients != "" ? 1 : 0
+  count = local.enable_newrelic && var.alert_email_recipients != "" ? 1 : 0
 
   name           = "Email Channel - ValidaPessoa ${var.environment}"
   type           = "EMAIL"
@@ -325,7 +325,7 @@ resource "newrelic_notification_channel" "email" {
 
 # Slack Notification Channel
 resource "newrelic_notification_channel" "slack" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.enable_slack_notifications ? 1 : 0
+  count = local.enable_newrelic && var.enable_slack_notifications ? 1 : 0
 
   name           = "Slack Channel - ValidaPessoa ${var.environment}"
   type           = "SLACK"
@@ -345,7 +345,7 @@ resource "newrelic_notification_channel" "slack" {
 
 # PagerDuty Notification Channel
 resource "newrelic_notification_channel" "pagerduty" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.environment == "prod" && var.enable_pagerduty ? 1 : 0
+  count = local.enable_newrelic && var.environment == "prod" && var.enable_pagerduty ? 1 : 0
 
   name           = "PagerDuty Channel - ValidaPessoa Production"
   type           = "PAGERDUTY_SERVICE_INTEGRATION"
@@ -372,7 +372,7 @@ resource "newrelic_notification_channel" "pagerduty" {
 
 # Email Workflow
 resource "newrelic_workflow" "email_workflow" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.alert_email_recipients != "" ? 1 : 0
+  count = local.enable_newrelic && var.alert_email_recipients != "" ? 1 : 0
 
   name                  = "Email Workflow - ValidaPessoa ${var.environment}"
   enabled               = true
@@ -396,7 +396,7 @@ resource "newrelic_workflow" "email_workflow" {
 
 # Slack Workflow
 resource "newrelic_workflow" "slack_workflow" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.enable_slack_notifications ? 1 : 0
+  count = local.enable_newrelic && var.enable_slack_notifications ? 1 : 0
 
   name                  = "Slack Workflow - ValidaPessoa ${var.environment}"
   enabled               = true
@@ -420,7 +420,7 @@ resource "newrelic_workflow" "slack_workflow" {
 
 # PagerDuty Workflow (Production only, critical alerts)
 resource "newrelic_workflow" "pagerduty_workflow" {
-  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.environment == "prod" && var.enable_pagerduty ? 1 : 0
+  count = local.enable_newrelic && var.environment == "prod" && var.enable_pagerduty ? 1 : 0
 
   name                  = "PagerDuty Workflow - ValidaPessoa Production"
   enabled               = true

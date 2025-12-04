@@ -7,6 +7,10 @@ locals {
   api_gateway_name     = "${var.project_name}-api-${var.environment}"
   dynamodb_table_name  = "${var.project_name}-customers-${var.environment}"
 
+  # New Relic monitoring flag (non-sensitive for use in count)
+  # This checks if monitoring is enabled AND credentials are provided
+  enable_newrelic = var.enable_new_relic_monitoring && try(length(var.new_relic_api_key) > 0, false)
+
   # Common tags
   common_tags = merge(
     var.additional_tags,
