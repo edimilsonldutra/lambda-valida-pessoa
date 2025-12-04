@@ -28,7 +28,7 @@ print_error() {
 
 # 1. Build da aplicação Java
 print_info "Step 1: Building Java application..."
-cd HelloWorldFunction
+cd LambdaValidaPessoa
 mvn clean package
 
 if [ $? -eq 0 ]; then
@@ -42,17 +42,17 @@ cd ..
 
 # 2. Verificar se terraform.tfvars existe
 print_info "Step 2: Verificando configuração do Terraform..."
-if [ ! -f "terraform/terraform.tfvars" ]; then
+if [ ! -f "infra/terraform/terraform.tfvars" ]; then
     print_warning "terraform.tfvars não encontrado. Criando a partir do exemplo..."
-    cp terraform/terraform.tfvars.example terraform/terraform.tfvars
-    print_warning "ATENÇÃO: Edite terraform/terraform.tfvars antes de continuar!"
+    cp infra/terraform/terraform.tfvars.example infra/terraform/terraform.tfvars
+    print_warning "ATENÇÃO: Edite infra/terraform/terraform.tfvars antes de continuar!"
     print_warning "Especialmente o JWT_SECRET em produção!"
     exit 1
 fi
 
 # 3. Terraform init
 print_info "Step 3: Inicializando Terraform..."
-cd terraform
+cd infra/terraform
 terraform init
 
 # 4. Terraform plan
@@ -105,4 +105,3 @@ echo "  • 70987206109 - Pedro Oliveira (INACTIVE)"
 echo ""
 
 cd ..
-

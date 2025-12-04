@@ -97,13 +97,8 @@ resource "aws_lambda_function" "valida_pessoa" {
     aws_secretsmanager_secret_version.db_current
   ]
 
-  lifecycle {
-    ignore_changes = [
-      last_modified,
-      qualified_arn,
-      version
-    ]
-  }
+  # Note: Removed redundant ignore_changes for provider-managed attributes
+  # (last_modified, qualified_arn, version) as they are automatically ignored
 }
 
 # Lambda Function Alias

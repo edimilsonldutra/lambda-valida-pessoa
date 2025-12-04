@@ -347,10 +347,8 @@ variable "enable_cors" {
   default     = true
 }
 
-variable "db_secret_arn" {
-  description = "ARN of the AWS Secrets Manager secret containing DB credentials"
-  type        = string
-}
+# REMOVED: variable "db_secret_arn" - This should be computed from secrets.tf resource
+# Use aws_secretsmanager_secret.db.arn instead
 
 variable "db_schema" {
   description = "Database schema name"
@@ -443,9 +441,9 @@ variable "new_relic_license_key" {
 
 variable "new_relic_account_id" {
   description = "New Relic account ID"
-  type        = string
+  type        = number
   sensitive   = true
-  default     = ""
+  default     = 0  # 0 means disabled
 }
 
 variable "new_relic_api_key" {

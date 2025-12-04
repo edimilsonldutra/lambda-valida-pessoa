@@ -10,7 +10,7 @@ echo.
 
 REM 1. Build da aplicação Java
 echo [Step 1] Building Java application...
-cd HelloWorldFunction
+cd LambdaValidaPessoa
 call mvn clean package
 
 if %ERRORLEVEL% NEQ 0 (
@@ -25,12 +25,12 @@ cd ..
 REM 2. Verificar se terraform.tfvars existe
 echo.
 echo [Step 2] Verificando configuração do Terraform...
-if not exist "terraform\terraform.tfvars" (
+if not exist "infra\terraform\terraform.tfvars" (
     echo WARNING: terraform.tfvars não encontrado
     echo Criando a partir do exemplo...
-    copy terraform\terraform.tfvars.example terraform\terraform.tfvars
+    copy infra\terraform\terraform.tfvars.example infra\terraform\terraform.tfvars
     echo.
-    echo ATENÇÃO: Edite terraform\terraform.tfvars antes de continuar!
+    echo ATENÇÃO: Edite infra\terraform\terraform.tfvars antes de continuar!
     echo Especialmente o JWT_SECRET em produção!
     pause
     exit /b 1
@@ -39,7 +39,7 @@ if not exist "terraform\terraform.tfvars" (
 REM 3. Terraform init
 echo.
 echo [Step 3] Inicializando Terraform...
-cd terraform
+cd infra\terraform
 terraform init
 
 REM 4. Terraform plan
@@ -95,4 +95,3 @@ echo.
 
 cd ..
 pause
-

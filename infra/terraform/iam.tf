@@ -35,7 +35,7 @@ data "aws_iam_policy_document" "lambda_secretsmanager" {
       "secretsmanager:DescribeSecret"
     ]
     resources = [
-      var.db_secret_arn
+      aws_secretsmanager_secret.db.arn
     ]
   }
 }

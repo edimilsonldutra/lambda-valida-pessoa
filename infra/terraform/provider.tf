@@ -27,9 +27,11 @@ provider "aws" {
 }
 
 # New Relic provider - only configure if monitoring is enabled
+# Note: Provider blocks cannot be conditional, so we use empty/dummy values when not configured
+# All New Relic resources have count conditions to prevent creation when disabled
 provider "newrelic" {
-  account_id = var.new_relic_account_id
-  api_key    = var.new_relic_api_key
+  account_id = var.new_relic_account_id != 0 ? var.new_relic_account_id : 9999999
+  api_key    = var.new_relic_api_key != "" ? var.new_relic_api_key : "dummy-key-not-used"
   region     = var.new_relic_region
 }
 
