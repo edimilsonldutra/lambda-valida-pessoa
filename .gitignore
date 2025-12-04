@@ -31,3 +31,7 @@ infra/terraform/.terraform.lock.hcl
 *.bak
 *~
 nul
+
+# Terraform auto-generated secrets (NEVER COMMIT!)
+*.auto.tfvars
+secrets.auto.tfvars

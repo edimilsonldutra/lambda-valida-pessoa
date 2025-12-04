@@ -252,76 +252,200 @@ resource "newrelic_nrql_alert_condition" "lambda_timeouts" {
 }
 
 # ============================================================================
-# Notification Channels
+# Notification Destinations (New Workflow-based Notifications)
 # ============================================================================
 
-# Email Notification Channel
-resource "newrelic_alert_channel" "email" {
+# Email Notification Destination
+resource "newrelic_notification_destination" "email" {
   count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.alert_email_recipients != "" ? 1 : 0
 
   name = "Email - ValidaPessoa ${var.environment}"
-  type = "email"
+  type = "EMAIL"
 
-  config {
-    recipients              = var.alert_email_recipients
-    include_json_attachment = "true"
+  property {
+    key   = "email"
+    value = var.alert_email_recipients
   }
 }
 
-# Slack Notification Channel (optional)
-resource "newrelic_alert_channel" "slack" {
+# Slack Notification Destination
+resource "newrelic_notification_destination" "slack" {
   count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.enable_slack_notifications ? 1 : 0
 
   name = "Slack - ValidaPessoa ${var.environment}"
-  type = "slack"
+  type = "SLACK"
 
-  config {
-    url     = var.slack_webhook_url
-    channel = var.slack_channel
+  property {
+    key   = "url"
+    value = var.slack_webhook_url
   }
 }
 
-# PagerDuty Channel (for production critical alerts)
-resource "newrelic_alert_channel" "pagerduty" {
+# PagerDuty Notification Destination
+resource "newrelic_notification_destination" "pagerduty" {
   count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.environment == "prod" && var.enable_pagerduty ? 1 : 0
 
   name = "PagerDuty - ValidaPessoa Production"
-  type = "pagerduty"
+  type = "PAGERDUTY_SERVICE_INTEGRATION"
 
-  config {
-    service_key = var.pagerduty_service_key
+  property {
+    key   = "summary"
+    value = "ValidaPessoa Alert - {{ issueTitle }}"
+  }
+
+  auth_token {
+    prefix = "Token token="
+    token  = var.pagerduty_service_key
   }
 }
 
 # ============================================================================
-# Link Channels to Policy
+# Notification Channels (Link Destinations to Workflows)
 # ============================================================================
 
-resource "newrelic_alert_policy_channel" "email_channel" {
+# Email Notification Channel
+resource "newrelic_notification_channel" "email" {
   count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.alert_email_recipients != "" ? 1 : 0
 
-  policy_id = newrelic_alert_policy.valida_pessoa_policy[0].id
-  channel_ids = [
-    newrelic_alert_channel.email[0].id
-  ]
+  name           = "Email Channel - ValidaPessoa ${var.environment}"
+  type           = "EMAIL"
+  destination_id = newrelic_notification_destination.email[0].id
+  product        = "IINT" # Incident Intelligence
+
+  property {
+    key   = "subject"
+    value = "Alert: {{ issueTitle }}"
+  }
+
+  property {
+    key   = "customDetailsEmail"
+    value = "Issue ID: {{ issueId }}"
+  }
 }
 
-resource "newrelic_alert_policy_channel" "slack_channel" {
+# Slack Notification Channel
+resource "newrelic_notification_channel" "slack" {
   count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.enable_slack_notifications ? 1 : 0
 
-  policy_id = newrelic_alert_policy.valida_pessoa_policy[0].id
-  channel_ids = [
-    newrelic_alert_channel.slack[0].id
-  ]
+  name           = "Slack Channel - ValidaPessoa ${var.environment}"
+  type           = "SLACK"
+  destination_id = newrelic_notification_destination.slack[0].id
+  product        = "IINT"
+
+  property {
+    key   = "channelId"
+    value = var.slack_channel
+  }
+
+  property {
+    key   = "customDetailsSlack"
+    value = "Issue: {{ issueTitle }}\nPriority: {{ priority }}\nEnvironment: ${var.environment}"
+  }
 }
 
-resource "newrelic_alert_policy_channel" "pagerduty_channel" {
+# PagerDuty Notification Channel
+resource "newrelic_notification_channel" "pagerduty" {
   count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.environment == "prod" && var.enable_pagerduty ? 1 : 0
 
-  policy_id = newrelic_alert_policy.valida_pessoa_policy[0].id
-  channel_ids = [
-    newrelic_alert_channel.pagerduty[0].id
-  ]
+  name           = "PagerDuty Channel - ValidaPessoa Production"
+  type           = "PAGERDUTY_SERVICE_INTEGRATION"
+  destination_id = newrelic_notification_destination.pagerduty[0].id
+  product        = "IINT"
+
+  property {
+    key   = "summary"
+    value = "{{ annotations.title.[0] }}"
+  }
+
+  property {
+    key   = "customDetails"
+    value = jsonencode({
+      id       = "{{ issueId }}"
+      priority = "{{ priority }}"
+    })
+  }
+}
+
+# ============================================================================
+# Workflows (Link Channels to Alert Policies)
+# ============================================================================
+
+# Email Workflow
+resource "newrelic_workflow" "email_workflow" {
+  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.alert_email_recipients != "" ? 1 : 0
+
+  name                  = "Email Workflow - ValidaPessoa ${var.environment}"
+  enabled               = true
+  muting_rules_handling = "NOTIFY_ALL_ISSUES"
+
+  issues_filter {
+    name = "Filter by Policy"
+    type = "FILTER"
+
+    predicate {
+      attribute = "labels.policyIds"
+      operator  = "EXACTLY_MATCHES"
+      values    = [newrelic_alert_policy.valida_pessoa_policy[0].id]
+    }
+  }
+
+  destination {
+    channel_id = newrelic_notification_channel.email[0].id
+  }
+}
+
+# Slack Workflow
+resource "newrelic_workflow" "slack_workflow" {
+  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.enable_slack_notifications ? 1 : 0
+
+  name                  = "Slack Workflow - ValidaPessoa ${var.environment}"
+  enabled               = true
+  muting_rules_handling = "NOTIFY_ALL_ISSUES"
+
+  issues_filter {
+    name = "Filter by Policy"
+    type = "FILTER"
+
+    predicate {
+      attribute = "labels.policyIds"
+      operator  = "EXACTLY_MATCHES"
+      values    = [newrelic_alert_policy.valida_pessoa_policy[0].id]
+    }
+  }
+
+  destination {
+    channel_id = newrelic_notification_channel.slack[0].id
+  }
+}
+
+# PagerDuty Workflow (Production only, critical alerts)
+resource "newrelic_workflow" "pagerduty_workflow" {
+  count = var.enable_new_relic_monitoring && var.new_relic_api_key != "" && var.environment == "prod" && var.enable_pagerduty ? 1 : 0
+
+  name                  = "PagerDuty Workflow - ValidaPessoa Production"
+  enabled               = true
+  muting_rules_handling = "DONT_NOTIFY_FULLY_MUTED_ISSUES"
+
+  issues_filter {
+    name = "Filter by Policy and Priority"
+    type = "FILTER"
+
+    predicate {
+      attribute = "labels.policyIds"
+      operator  = "EXACTLY_MATCHES"
+      values    = [newrelic_alert_policy.valida_pessoa_policy[0].id]
+    }
+
+    predicate {
+      attribute = "priority"
+      operator  = "EQUAL"
+      values    = ["CRITICAL"]
+    }
+  }
+
+  destination {
+    channel_id = newrelic_notification_channel.pagerduty[0].id
+  }
 }
 
 

@@ -108,6 +108,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "deployment_dev" {
     id     = "cleanup-old-artifacts"
     status = "Enabled"
 
+    filter {}
+
     expiration {
       days = 30
     }
@@ -125,6 +127,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "deployment_prod" {
   rule {
     id     = "cleanup-old-artifacts"
     status = "Enabled"
+
+    filter {}
 
     expiration {
       days = 90
@@ -383,4 +387,3 @@ resource "aws_iam_access_key" "github_actions_prod" {
 # ---------------------------------------
 
 data "aws_caller_identity" "current" {}
-
