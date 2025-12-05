@@ -1,0 +1,301 @@
+name: 🛡️ Apply Branch Protection Rules
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_apply:
+        description: 'Force apply even if rules exist'
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: 'Dry run (show what would be applied)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  apply-protection:
+    name: 🛡️ Apply Branch Protection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+
+      - name: 📋 Display Configuration
+        run: |
+          echo "🔒 Branch Protection Configuration to be Applied"
+          echo "================================================"
+          echo ""
+          echo "📌 Main Branch:"
+          echo "  - Pull Request Required: ✅"
+          echo "  - Approvals Required: 2"
+          echo "  - Code Owner Review: ✅"
+          echo "  - Dismiss Stale Reviews: ✅"
+          echo "  - Status Checks Required: ✅"
+          echo "    • CI Pipeline Success"
+          echo "    • Build & Unit Tests"
+          echo "    • Security Scan"
+          echo "  - Conversation Resolution: ✅"
+          echo "  - Force Push: ❌ BLOCKED"
+          echo "  - Branch Deletion: ❌ BLOCKED"
+          echo "  - Admin Enforcement: ✅"
+          echo ""
+          echo "📌 Develop Branch:"
+          echo "  - Pull Request Required: ✅"
+          echo "  - Approvals Required: 1"
+          echo "  - Dismiss Stale Reviews: ✅"
+          echo "  - Status Checks Required: ✅"
+          echo "    • Build & Unit Tests"
+          echo "    • Code Quality Analysis"
+          echo "  - Conversation Resolution: ✅"
+          echo "  - Force Push: ❌ BLOCKED"
+          echo "  - Branch Deletion: ❌ BLOCKED"
+          echo "  - Admin Enforcement: ⚠️ NO (allows emergency access)"
+          echo ""
+
+      - name: 🛡️ Apply Main Branch Protection
+        if: ${{ !inputs.dry_run }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const protection = {
+              required_status_checks: {
+                strict: true,
+                contexts: [
+                  'CI Pipeline Success',
+                  'Build & Unit Tests',
+                  'Security Scan'
+                ]
+              },
+              enforce_admins: true,
+              required_pull_request_reviews: {
+                dismissal_restrictions: {},
+                dismiss_stale_reviews: true,
+                require_code_owner_reviews: true,
+                required_approving_review_count: 2,
+                require_last_push_approval: false
+              },
+              restrictions: null,
+              required_linear_history: false,
+              allow_force_pushes: false,
+              allow_deletions: false,
+              block_creations: false,
+              required_conversation_resolution: true,
+              lock_branch: false,
+              allow_fork_syncing: false
+            };
+
+            try {
+              await github.rest.repos.updateBranchProtection({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: 'main',
+                ...protection
+              });
+              
+              console.log('✅ Main branch protection applied successfully!');
+            } catch (error) {
+              console.error('❌ Failed to apply main branch protection:', error.message);
+              
+              if (error.status === 404) {
+                console.log('⚠️ Branch "main" may not exist yet. Trying "master"...');
+                
+                try {
+                  await github.rest.repos.updateBranchProtection({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    branch: 'master',
+                    ...protection
+                  });
+                  console.log('✅ Master branch protection applied successfully!');
+                } catch (masterError) {
+                  console.error('❌ Failed to apply master branch protection:', masterError.message);
+                  core.setFailed('Could not apply protection to main or master branch');
+                }
+              } else {
+                core.setFailed(error.message);
+              }
+            }
+
+      - name: 🛡️ Apply Develop Branch Protection
+        if: ${{ !inputs.dry_run }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const protection = {
+              required_status_checks: {
+                strict: true,
+                contexts: [
+                  'Build & Unit Tests',
+                  'Code Quality Analysis'
+                ]
+              },
+              enforce_admins: false, // Permite acesso de emergência
+              required_pull_request_reviews: {
+                dismissal_restrictions: {},
+                dismiss_stale_reviews: true,
+                require_code_owner_reviews: false,
+                required_approving_review_count: 1,
+                require_last_push_approval: false
+              },
+              restrictions: null,
+              required_linear_history: false,
+              allow_force_pushes: false,
+              allow_deletions: false,
+              block_creations: false,
+              required_conversation_resolution: true,
+              lock_branch: false,
+              allow_fork_syncing: false
+            };
+
+            try {
+              await github.rest.repos.updateBranchProtection({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: 'develop',
+                ...protection
+              });
+              
+              console.log('✅ Develop branch protection applied successfully!');
+            } catch (error) {
+              console.error('❌ Failed to apply develop branch protection:', error.message);
+              
+              if (error.status === 404) {
+                console.log('⚠️ Branch "develop" does not exist yet.');
+                console.log('Creating develop branch from main...');
+                
+                try {
+                  // Get main branch SHA
+                  const mainBranch = await github.rest.repos.getBranch({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    branch: 'main'
+                  });
+                  
+                  // Create develop branch
+                  await github.rest.git.createRef({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ref: 'refs/heads/develop',
+                    sha: mainBranch.data.commit.sha
+                  });
+                  
+                  console.log('✅ Develop branch created!');
+                  
+                  // Apply protection
+                  await github.rest.repos.updateBranchProtection({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    branch: 'develop',
+                    ...protection
+                  });
+                  
+                  console.log('✅ Develop branch protection applied successfully!');
+                } catch (createError) {
+                  console.error('❌ Failed to create/protect develop branch:', createError.message);
+                  core.setFailed(createError.message);
+                }
+              } else {
+                core.setFailed(error.message);
+              }
+            }
+
+      - name: 📊 Verify Applied Rules
+        if: ${{ !inputs.dry_run }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log('🔍 Verifying applied protection rules...\n');
+            
+            // Verify main branch
+            try {
+              const mainProtection = await github.rest.repos.getBranchProtection({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: 'main'
+              });
+              
+              console.log('✅ Main Branch Protection Verified:');
+              console.log(`   - Required approvals: ${mainProtection.data.required_pull_request_reviews.required_approving_review_count}`);
+              console.log(`   - Code owner review: ${mainProtection.data.required_pull_request_reviews.require_code_owner_reviews}`);
+              console.log(`   - Force push allowed: ${mainProtection.data.allow_force_pushes.enabled}`);
+              console.log(`   - Admins enforced: ${mainProtection.data.enforce_admins.enabled}`);
+            } catch (error) {
+              console.error('❌ Could not verify main branch protection');
+            }
+            
+            console.log('');
+            
+            // Verify develop branch
+            try {
+              const developProtection = await github.rest.repos.getBranchProtection({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: 'develop'
+              });
+              
+              console.log('✅ Develop Branch Protection Verified:');
+              console.log(`   - Required approvals: ${developProtection.data.required_pull_request_reviews.required_approving_review_count}`);
+              console.log(`   - Force push allowed: ${developProtection.data.allow_force_pushes.enabled}`);
+              console.log(`   - Admins enforced: ${developProtection.data.enforce_admins.enabled}`);
+            } catch (error) {
+              console.error('❌ Could not verify develop branch protection');
+            }
+
+      - name: 📄 Dry Run Summary
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "🏃 DRY RUN MODE - No changes were applied"
+          echo ""
+          echo "To apply these rules, run this workflow without dry_run option:"
+          echo "  gh workflow run apply-branch-protection.yml"
+          echo ""
+          echo "Or apply manually using the script:"
+          echo "  bash scripts/setup-cicd.sh"
+
+      - name: ✅ Success Summary
+        if: ${{ !inputs.dry_run }}
+        run: |
+          echo "════════════════════════════════════════════════════════"
+          echo "✅ Branch Protection Rules Applied Successfully!"
+          echo "════════════════════════════════════════════════════════"
+          echo ""
+          echo "🔒 Main Branch:"
+          echo "  ✅ Protected with 2 required approvals"
+          echo "  ✅ Code owner review required"
+          echo "  ✅ Status checks enforced"
+          echo "  ✅ Force push blocked"
+          echo "  ✅ Admin enforcement enabled"
+          echo ""
+          echo "🔒 Develop Branch:"
+          echo "  ✅ Protected with 1 required approval"
+          echo "  ✅ Status checks enforced"
+          echo "  ✅ Force push blocked"
+          echo ""
+          echo "📚 Next Steps:"
+          echo "  1. Review BRANCH_PROTECTION_POLICY.md for details"
+          echo "  2. Update team members about new policies"
+          echo "  3. Configure Code Owners in .github/CODEOWNERS"
+          echo "  4. Test with a sample PR"
+          echo ""
+          echo "📊 Verify protection status:"
+          echo "  gh workflow run verify-branch-protection.yml"
+          echo ""
+
+      - name: 📧 Notify Team (Optional)
+        if: ${{ !inputs.dry_run && success() }}
+        run: |
+          echo "🔔 Branch protection rules have been applied!"
+          echo "All team members should be notified about the new policies."
+          echo ""
+          echo "Recommended notifications:"
+          echo "  - Slack announcement"
+          echo "  - Email to team"
+          echo "  - Update in team wiki/docs"
+

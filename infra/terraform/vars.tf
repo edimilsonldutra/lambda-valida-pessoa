@@ -102,23 +102,6 @@ variable "lambda_jar_path" {
   default     = "../../LambdaValidaPessoa/target/HelloWorld-1.0.jar"
 }
 
-# DynamoDB Configuration
-variable "dynamodb_billing_mode" {
-  description = "DynamoDB billing mode (PROVISIONED or PAY_PER_REQUEST)"
-  type        = string
-  default     = "PAY_PER_REQUEST"
-
-  validation {
-    condition     = contains(["PROVISIONED", "PAY_PER_REQUEST"], var.dynamodb_billing_mode)
-    error_message = "Billing mode must be PROVISIONED or PAY_PER_REQUEST."
-  }
-}
-
-variable "enable_point_in_time_recovery" {
-  description = "Enable DynamoDB point-in-time recovery"
-  type        = bool
-  default     = false
-}
 
 # CloudWatch Configuration
 variable "log_retention_days" {
@@ -169,48 +152,6 @@ variable "lambda_reserved_concurrent_executions" {
   }
 }
 
-# ============================================================================
-# Additional DynamoDB Configuration
-# ============================================================================
-
-variable "dynamodb_read_capacity" {
-  description = "DynamoDB read capacity units (only used when billing_mode is PROVISIONED)"
-  type        = number
-  default     = 5
-
-  validation {
-    condition     = var.dynamodb_read_capacity >= 1
-    error_message = "Read capacity must be at least 1."
-  }
-}
-
-variable "dynamodb_write_capacity" {
-  description = "DynamoDB write capacity units (only used when billing_mode is PROVISIONED)"
-  type        = number
-  default     = 5
-
-  validation {
-    condition     = var.dynamodb_write_capacity >= 1
-    error_message = "Write capacity must be at least 1."
-  }
-}
-
-variable "enable_dynamodb_streams" {
-  description = "Enable DynamoDB Streams for change data capture"
-  type        = bool
-  default     = false
-}
-
-variable "dynamodb_stream_view_type" {
-  description = "DynamoDB stream view type (KEYS_ONLY, NEW_IMAGE, OLD_IMAGE, NEW_AND_OLD_IMAGES)"
-  type        = string
-  default     = "NEW_AND_OLD_IMAGES"
-
-  validation {
-    condition     = contains(["KEYS_ONLY", "NEW_IMAGE", "OLD_IMAGE", "NEW_AND_OLD_IMAGES"], var.dynamodb_stream_view_type)
-    error_message = "Stream view type must be KEYS_ONLY, NEW_IMAGE, OLD_IMAGE, or NEW_AND_OLD_IMAGES."
-  }
-}
 
 # ============================================================================
 # Additional CloudWatch Configuration
@@ -443,7 +384,7 @@ variable "new_relic_account_id" {
   description = "New Relic account ID"
   type        = number
   sensitive   = true
-  default     = 0  # 0 means disabled
+  default     = 0 # 0 means disabled
 }
 
 variable "new_relic_api_key" {

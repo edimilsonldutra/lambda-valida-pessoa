@@ -52,28 +52,32 @@ resource "aws_lambda_function" "valida_pessoa" {
   }
 
   environment {
-    variables = {
-      JWT_SECRET        = var.jwt_secret
-      JWT_EXPIRATION_MS = tostring(var.jwt_expiration_ms)
-      ENVIRONMENT       = var.environment
-      LOG_LEVEL         = var.environment == "prod" ? "INFO" : "DEBUG"
-      DB_SECRET_ARN     = aws_secretsmanager_secret.db.arn
-      DB_SCHEMA         = var.db_schema
-      DB_TABLE          = var.db_table
-      # New Relic Configuration
-      NEW_RELIC_LICENSE_KEY                  = var.new_relic_license_key
-      NEW_RELIC_APP_NAME                     = "${local.lambda_function_name}-${var.environment}"
-      NEW_RELIC_LOG_LEVEL                    = var.environment == "prod" ? "info" : "debug"
-      NEW_RELIC_DISTRIBUTED_TRACING_ENABLED  = "true"
-      NEW_RELIC_EXTENSION_SEND_FUNCTION_LOGS = "true"
-      NEW_RELIC_EXTENSION_LOG_LEVEL          = "INFO"
-    }
+    variables = merge(
+      {
+        JWT_SECRET        = var.jwt_secret
+        JWT_EXPIRATION_MS = tostring(var.jwt_expiration_ms)
+        ENVIRONMENT       = var.environment
+        LOG_LEVEL         = var.environment == "prod" ? "INFO" : "DEBUG"
+        DB_SECRET_ARN     = aws_secretsmanager_secret.db.arn
+        DB_SCHEMA         = var.db_schema
+        DB_TABLE          = var.db_table
+      },
+      # Add New Relic environment variables only if monitoring is enabled
+      var.enable_new_relic_monitoring ? {
+        NEW_RELIC_LICENSE_KEY                  = var.new_relic_license_key
+        NEW_RELIC_APP_NAME                     = "${local.lambda_function_name}-${var.environment}"
+        NEW_RELIC_LOG_LEVEL                    = var.environment == "prod" ? "info" : "debug"
+        NEW_RELIC_DISTRIBUTED_TRACING_ENABLED  = "true"
+        NEW_RELIC_EXTENSION_SEND_FUNCTION_LOGS = "true"
+        NEW_RELIC_EXTENSION_LOG_LEVEL          = "INFO"
+      } : {}
+    )
   }
 
-  # Add New Relic Lambda Layer
-  layers = [
+  # Add New Relic Lambda Layer only if monitoring is enabled
+  layers = var.enable_new_relic_monitoring ? [
     var.new_relic_lambda_layer_arn
-  ]
+  ] : []
 
   tracing_config {
     mode = var.environment == "prod" ? "Active" : "PassThrough"

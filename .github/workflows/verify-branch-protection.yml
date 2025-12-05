@@ -1,0 +1,241 @@
+name: 🔒 Verify Branch Protection
+
+on:
+  schedule:
+    # Executa diariamente às 9h UTC
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/verify-branch-protection.yml'
+      - 'BRANCH_PROTECTION_POLICY.md'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  verify-protection:
+    name: 🔍 Verify Branch Protection Rules
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Check main branch protection
+        id: check-main
+        continue-on-error: true
+        run: |
+          echo "Checking main branch protection..."
+          
+          # Verificar se gh está disponível
+          if ! command -v gh &> /dev/null; then
+            echo "::warning::GitHub CLI not available"
+            echo "status=unknown" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Obter configuração de proteção
+          if gh api repos/:owner/:repo/branches/main/protection > main-protection.json 2>&1; then
+            echo "✅ Main branch has protection rules"
+            echo "status=protected" >> $GITHUB_OUTPUT
+            
+            # Verificar detalhes
+            if jq -e '.required_pull_request_reviews.required_approving_review_count >= 2' main-protection.json > /dev/null; then
+              echo "✅ Requires 2+ approvals"
+              echo "approvals=ok" >> $GITHUB_OUTPUT
+            else
+              echo "⚠️ Does not require 2+ approvals"
+              echo "approvals=warning" >> $GITHUB_OUTPUT
+            fi
+            
+            if jq -e '.required_pull_request_reviews.require_code_owner_reviews == true' main-protection.json > /dev/null; then
+              echo "✅ Requires code owner reviews"
+              echo "codeowners=ok" >> $GITHUB_OUTPUT
+            else
+              echo "⚠️ Does not require code owner reviews"
+              echo "codeowners=warning" >> $GITHUB_OUTPUT
+            fi
+            
+            if jq -e '.allow_force_pushes.enabled == false' main-protection.json > /dev/null; then
+              echo "✅ Force push is blocked"
+              echo "force_push=ok" >> $GITHUB_OUTPUT
+            else
+              echo "⚠️ Force push is allowed"
+              echo "force_push=warning" >> $GITHUB_OUTPUT
+            fi
+            
+          else
+            echo "❌ Main branch is NOT protected"
+            echo "status=unprotected" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: 🔍 Check develop branch protection
+        id: check-develop
+        continue-on-error: true
+        run: |
+          echo "Checking develop branch protection..."
+          
+          if ! command -v gh &> /dev/null; then
+            echo "::warning::GitHub CLI not available"
+            echo "status=unknown" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          if gh api repos/:owner/:repo/branches/develop/protection > develop-protection.json 2>&1; then
+            echo "✅ Develop branch has protection rules"
+            echo "status=protected" >> $GITHUB_OUTPUT
+            
+            if jq -e '.required_pull_request_reviews.required_approving_review_count >= 1' develop-protection.json > /dev/null; then
+              echo "✅ Requires 1+ approval"
+              echo "approvals=ok" >> $GITHUB_OUTPUT
+            else
+              echo "⚠️ Does not require approvals"
+              echo "approvals=warning" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "❌ Develop branch is NOT protected"
+            echo "status=unprotected" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: 📊 Generate Report
+        id: report
+        run: |
+          cat > report.md << 'EOF'
+          # 🔒 Branch Protection Status Report
+          
+          **Data**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Repository**: ${{ github.repository }}
+          
+          ## Main Branch
+          
+          EOF
+          
+          if [ "${{ steps.check-main.outputs.status }}" = "protected" ]; then
+            echo "✅ **Status**: Protected" >> report.md
+            echo "" >> report.md
+            echo "### Detalhes:" >> report.md
+            
+            if [ "${{ steps.check-main.outputs.approvals }}" = "ok" ]; then
+              echo "- ✅ Requer 2+ aprovações" >> report.md
+            else
+              echo "- ⚠️ **AÇÃO NECESSÁRIA**: Configurar 2+ aprovações obrigatórias" >> report.md
+            fi
+            
+            if [ "${{ steps.check-main.outputs.codeowners }}" = "ok" ]; then
+              echo "- ✅ Requer aprovação de Code Owner" >> report.md
+            else
+              echo "- ⚠️ **AÇÃO NECESSÁRIA**: Configurar aprovação de Code Owner" >> report.md
+            fi
+            
+            if [ "${{ steps.check-main.outputs.force_push }}" = "ok" ]; then
+              echo "- ✅ Force push bloqueado" >> report.md
+            else
+              echo "- ⚠️ **AÇÃO NECESSÁRIA**: Bloquear force push" >> report.md
+            fi
+          else
+            echo "❌ **Status**: NÃO PROTEGIDO" >> report.md
+            echo "" >> report.md
+            echo "### ⚠️ AÇÃO URGENTE NECESSÁRIA" >> report.md
+            echo "" >> report.md
+            echo "A branch main não está protegida! Execute:" >> report.md
+            echo '```bash' >> report.md
+            echo "bash scripts/setup-cicd.sh" >> report.md
+            echo '```' >> report.md
+          fi
+          
+          echo "" >> report.md
+          echo "## Develop Branch" >> report.md
+          echo "" >> report.md
+          
+          if [ "${{ steps.check-develop.outputs.status }}" = "protected" ]; then
+            echo "✅ **Status**: Protected" >> report.md
+            echo "" >> report.md
+            if [ "${{ steps.check-develop.outputs.approvals }}" = "ok" ]; then
+              echo "- ✅ Requer 1+ aprovação" >> report.md
+            else
+              echo "- ⚠️ **AÇÃO NECESSÁRIA**: Configurar 1+ aprovação" >> report.md
+            fi
+          else
+            echo "❌ **Status**: NÃO PROTEGIDO" >> report.md
+            echo "" >> report.md
+            echo "Execute: \`bash scripts/setup-cicd.sh\`" >> report.md
+          fi
+          
+          echo "" >> report.md
+          echo "## Referências" >> report.md
+          echo "" >> report.md
+          echo "- [Branch Protection Policy](BRANCH_PROTECTION_POLICY.md)" >> report.md
+          echo "- [Contributing Guide](CONTRIBUTING.md)" >> report.md
+          
+          cat report.md
+          
+          # Definir se há problemas
+          if [ "${{ steps.check-main.outputs.status }}" != "protected" ] || \
+             [ "${{ steps.check-develop.outputs.status }}" != "protected" ]; then
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_issues=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 💾 Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-protection-report
+          path: report.md
+          retention-days: 30
+
+      - name: 🚨 Create Issue if Protection Missing
+        if: steps.report.outputs.has_issues == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('report.md', 'utf8');
+            
+            // Verificar se já existe issue aberta
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'security,branch-protection'
+            });
+            
+            if (issues.data.length === 0) {
+              // Criar nova issue
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🔒 Branch Protection Rules Not Applied',
+                body: report + '\n\n---\n\n**Este issue foi criado automaticamente pelo workflow de verificação.**',
+                labels: ['security', 'branch-protection', 'high-priority']
+              });
+              
+              core.warning('Branch protection rules are missing! Issue created.');
+            } else {
+              // Atualizar issue existente
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues.data[0].number,
+                body: '🔄 **Atualização do Status**\n\n' + report
+              });
+              
+              core.warning('Branch protection rules are still missing! Issue updated.');
+            }
+
+      - name: ✅ Success Summary
+        if: steps.report.outputs.has_issues == 'false'
+        run: |
+          echo "✅ All branch protection rules are correctly applied!"
+          echo ""
+          echo "Main branch: ✅ Protected"
+          echo "Develop branch: ✅ Protected"
+          echo ""
+          echo "No action needed."
+

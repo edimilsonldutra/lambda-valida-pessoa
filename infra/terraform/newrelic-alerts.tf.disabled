@@ -1,6 +1,16 @@
+# ============================================================================
 # New Relic Alert Policies Configuration
-# This file contains the alert conditions to be configured in New Relic
-# Only created when New Relic monitoring is enabled and credentials are provided
+# ============================================================================
+# IMPORTANT: These resources require the New Relic provider to be enabled.
+#
+# To use New Relic monitoring:
+# 1. Uncomment the newrelic provider in provider.tf (both in required_providers and provider block)
+# 2. Set enable_new_relic_monitoring = true in terraform.tfvars
+# 3. Provide valid New Relic credentials
+#
+# All resources below have count conditions based on local.enable_newrelic,
+# so they won't be created if monitoring is disabled.
+# ============================================================================
 
 resource "newrelic_alert_policy" "valida_pessoa_policy" {
   count = local.enable_newrelic ? 1 : 0
